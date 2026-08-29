@@ -1,0 +1,1 @@
+{"schema_version":"2.0","event_id":"bad","media_id":"bad","owner_sub":"","sha256":"bad","media_type":"audio","original_storage_uri":"https://public.example/file","thumbnail_storage_uri":null,"frame_storage_uris":"not-an-array","occurred_at":"yesterday"}

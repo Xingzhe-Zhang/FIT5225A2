@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/media-prepared-event.schema.json",
+  "title": "MediaPreparedEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "media_id", "owner_sub", "sha256", "media_type", "original_storage_uri", "thumbnail_storage_uri", "frame_storage_uris", "occurred_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string", "format": "uuid"},
+    "media_id": {"type": "string", "format": "uuid"},
+    "owner_sub": {"type": "string", "minLength": 1, "maxLength": 128},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "media_type": {"type": "string", "enum": ["image", "video"]},
+    "original_storage_uri": {"type": "string", "pattern": "^s3://[^/]+/.+"},
+    "thumbnail_storage_uri": {"type": ["string", "null"], "pattern": "^s3://[^/]+/.+"},
+    "frame_storage_uris": {"type": "array", "items": {"type": "string", "pattern": "^s3://[^/]+/.+"}, "uniqueItems": true},
+    "occurred_at": {"type": "string", "format": "date-time"}
+  }
+}
