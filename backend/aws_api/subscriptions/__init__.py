@@ -1,0 +1,1 @@
+"""Authenticated subscription route adapter."""

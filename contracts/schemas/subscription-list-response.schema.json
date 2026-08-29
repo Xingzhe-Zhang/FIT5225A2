@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/subscription-list-response.schema.json",
+  "title": "SubscriptionListResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {"$ref": "./subscription-response.schema.json"}
+    }
+  }
+}

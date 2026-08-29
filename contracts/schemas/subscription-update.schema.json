@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/subscription-update.schema.json",
+  "title": "SubscriptionUpdateRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["email", "tags", "expected_version"],
+  "properties": {
+    "email": {"type": "string", "maxLength": 254, "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"},
+    "tags": {"type": "array", "minItems": 1, "maxItems": 50, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+    "expected_version": {"type": "integer", "minimum": 1}
+  }
+}
