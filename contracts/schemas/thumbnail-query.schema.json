@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/thumbnail-query.schema.json",
+  "title": "ThumbnailQuery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["thumbnail_url"],
+  "properties": {"thumbnail_url": {"type": "string", "pattern": "^https://[^/]+/.+"}}
+}

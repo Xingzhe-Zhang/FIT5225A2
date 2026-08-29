@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/query-response.schema.json",
+  "title": "QueryResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["media_id", "media_type", "status", "original_url", "thumbnail_url", "tag_counts", "manual_tags", "failure_code", "failure_message"],
+        "properties": {
+          "media_id": {"type": "string", "format": "uuid"},
+          "media_type": {"type": "string", "enum": ["image", "video"]},
+          "status": {"type": "string", "enum": ["reserved", "uploaded", "processing", "prepared", "ready", "deleting", "failed"]},
+          "original_url": {"type": ["string", "null"], "pattern": "^https://[^/]+/.+"},
+          "thumbnail_url": {"type": ["string", "null"], "pattern": "^https://[^/]+/.+"},
+          "tag_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}},
+          "manual_tags": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": true},
+          "failure_code": {"type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+          "failure_message": {"type": ["string", "null"], "minLength": 1, "maxLength": 500}
+        }
+      }
+    }
+  }
+}

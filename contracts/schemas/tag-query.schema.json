@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/tag-query.schema.json",
+  "title": "TagQuery",
+  "type": "object",
+  "minProperties": 1,
+  "maxProperties": 20,
+  "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_. -]{0,127}$"},
+  "additionalProperties": {"type": "integer", "minimum": 1, "maximum": 100000}
+}

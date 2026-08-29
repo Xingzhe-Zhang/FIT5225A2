@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/species-query.schema.json",
+  "title": "SpeciesQuery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["species"],
+  "properties": {"species": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": ".*\\S.*"}}
+}
