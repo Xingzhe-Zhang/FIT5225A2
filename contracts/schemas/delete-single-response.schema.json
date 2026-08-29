@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/delete-single-response.schema.json",
+  "title": "DeleteSingleResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["result"],
+  "properties": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "media_id", "operation_id", "status", "error"],
+      "properties": {
+        "url": {"type": "string"},
+        "media_id": {"type": ["string", "null"], "format": "uuid"},
+        "operation_id": {"type": ["string", "null"], "format": "uuid"},
+        "status": {"type": "string", "enum": ["not_found", "failed", "deleted"]},
+        "error": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

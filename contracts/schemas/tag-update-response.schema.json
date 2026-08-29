@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/tag-update-response.schema.json",
+  "title": "TagUpdateResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "media_id", "status"],
+        "properties": {
+          "url": {"type": "string", "format": "uri"},
+          "media_id": {"type": ["string", "null"], "format": "uuid"},
+          "status": {"type": "string", "enum": ["invalid_url", "not_found", "conflict", "unchanged", "updated"]}
+        }
+      }
+    }
+  }
+}
