@@ -82,8 +82,11 @@ function CompactTags({
   empty: string;
 }) {
   if (entries.length === 0) return <span className="table-empty-value">{empty}</span>;
-  const visible = entries.slice(0, 3);
-  const hidden = entries.slice(3);
+  // Manual tags tend to be short and numerous. Two chips plus a compact
+  // overflow control keeps them clear of the fixed actions column.
+  const visibleLimit = manual ? 2 : 3;
+  const visible = entries.slice(0, visibleLimit);
+  const hidden = entries.slice(visibleLimit);
   return (
     <div className="table-tag-list">
       {visible.map(([tag, count]) => (
