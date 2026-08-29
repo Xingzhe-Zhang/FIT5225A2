@@ -1,12 +1,15 @@
+import io
 import os
 from pathlib import Path
 
 import backend.tagging.inference.local_runtime as local_runtime
+from PIL import Image
 from backend.common.providers.fakes import InMemoryObjectStorage
 from backend.common.providers.interfaces import InferenceResult
 from backend.tagging.inference.manifest import LoadedModelBundle
 from backend.tagging.inference.local_runtime import (
     LocalWildlifeInferenceService,
+    TorchWildlifeRuntime,
     _load_labels,
     _temporary_environment,
 )
@@ -82,6 +85,49 @@ def test_manifest_bundle_configures_runtime_paths_and_version(
     assert captured["model_version"] == "2.0.0"
     assert captured["input_width"] == 320
     assert captured["input_height"] == 256
+
+
+def test_torch_runtime_uses_maximum_species_count_from_any_single_frame() -> None:
+    counts_per_frame = (1, 1, 6, 6, 6)
+
+    class DetectorBatch:
+        @staticmethod
+        def load_and_run_detector_batch(*, model_file: str, image_file_names: list[str]):
+            assert model_file == "detector.pt"
+            return [
+                {
+                    "file": path,
+                    "detections": [
+                        {"category": "1", "conf": 0.95, "bbox": [0.0, 0.0, 1.0, 1.0]}
+                        for _ in range(count)
+                    ],
+                }
+                for path, count in zip(image_file_names, counts_per_frame, strict=True)
+            ]
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), color="white").save(buffer, format="JPEG")
+    frame = buffer.getvalue()
+    classifications = iter(
+        ["Felis_catus"] * 2 + ["Bos_taurus"] * 18
+    )
+    runtime = object.__new__(TorchWildlifeRuntime)
+    runtime._run_detector_batch = DetectorBatch()
+    runtime._detector_path = Path("detector.pt")
+    runtime._detection_threshold = 0.2
+    runtime._input_width = 480
+    runtime._input_height = 480
+    runtime._model_version = "test-model"
+    runtime._classify = lambda image: next(classifications)
+
+    result = runtime._infer_serialized(
+        [(f"frame://{index}.jpg", frame) for index in range(5)]
+    )
+
+    assert result == InferenceResult(
+        tag_counts={"Felis_catus": 1, "Bos_taurus": 6},
+        model_version="test-model",
+    )
 
 
 def test_taxonomy_file_maps_to_classifier_species_names(tmp_path: Path) -> None:

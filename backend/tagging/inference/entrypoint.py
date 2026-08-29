@@ -47,6 +47,7 @@ def run_deterministic_inference(
 
     counts: Counter[str] = Counter()
     for uri in input_uris:
+        frame_counts: Counter[str] = Counter()
         input_digest = hashlib.sha256(reader.read(uri)).hexdigest()
         for prediction in predictions.get(input_digest, []):
             try:
@@ -60,9 +61,11 @@ def run_deterministic_inference(
                     raise TypeError("confidence must be numeric")
                 if confidence < bundle.classification_threshold:
                     continue
-                counts[bundle.labels[class_index]] += 1
+                frame_counts[bundle.labels[class_index]] += 1
             except (KeyError, TypeError, IndexError) as exc:
                 raise ManifestValidationError(f"invalid deterministic prediction: {exc}") from exc
+        for species, frame_count in frame_counts.items():
+            counts[species] = max(counts[species], frame_count)
     return {"model_version": bundle.model_version, "tag_counts": dict(counts)}
 
 

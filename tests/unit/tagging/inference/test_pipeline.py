@@ -99,6 +99,53 @@ def test_video_inputs_aggregate_one_count_per_accepted_animal_detection() -> Non
     }
 
 
+def test_video_inputs_use_maximum_species_count_from_any_single_frame() -> None:
+    frame_counts = {
+        "cat-one": 1,
+        "cat-two": 1,
+        "cattle-one": 6,
+        "cattle-two": 6,
+        "cattle-three": 6,
+    }
+
+    class RepeatedAnimalDetector:
+        def detect(self, image: FakeImage, *, device: str) -> list[Detection]:
+            assert device == "cpu"
+            return [
+                Detection("1", 0.95, (0.0, 0.0, 1.0, 1.0))
+                for _ in range(frame_counts[image.name])
+            ]
+
+    class FrameSpeciesClassifier:
+        def classify(self, crop: object, *, device: str) -> Classification:
+            assert device == "cpu"
+            frame_name, _, _, _ = crop
+            class_index = 0 if frame_name.startswith("cat-") else 1
+            return Classification(class_index=class_index, confidence=0.99)
+
+    values = {
+        f"frame://{index}": frame_name.encode("ascii")
+        for index, frame_name in enumerate(frame_counts)
+    }
+    pipeline = InferencePipeline(
+        object_reader=FakeReader(values),
+        decoder=FakeDecoder(),
+        detector=RepeatedAnimalDetector(),
+        classifier=FrameSpeciesClassifier(),
+        labels=("Felis_catus", "Bos_taurus"),
+        model_version="1.2.3",
+        input_width=480,
+        input_height=480,
+        detection_threshold=0.2,
+        classification_threshold=0.5,
+        device="cpu",
+    )
+
+    result = pipeline.infer(list(values))
+
+    assert result.tag_counts == {"Felis_catus": 1, "Bos_taurus": 6}
+
+
 def test_no_animal_returns_defined_empty_result() -> None:
     result = make_pipeline({"image://empty": b"empty"}).infer(["image://empty"])
     assert result.tag_counts == {}
