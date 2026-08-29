@@ -8,6 +8,7 @@ from backend.common.contracts.models import MediaRecord, TaggingCompletedEvent
 from backend.tagging.inference.manifest import LoadedModelBundle
 from datetime import UTC, datetime
 from uuid import UUID
+from backend.tagging.worker.errors import PermanentTaggingError, TransientTaggingError
 
 
 class SecretClient:
@@ -70,6 +71,41 @@ def test_model_check_forces_runtime_loading(monkeypatch) -> None:
 
     assert response == {"status": "ok", "model": "loaded"}
     assert inference.loaded is True
+
+
+def test_permanent_tagging_failure_is_acknowledged_but_transient_failure_is_retried(monkeypatch) -> None:
+    prepared = {
+        "schema_version": "1.0",
+        "event_id": "11111111-1111-4111-8111-111111111111",
+        "media_id": "22222222-2222-4222-8222-222222222222",
+        "owner_sub": "owner",
+        "sha256": "a" * 64,
+        "media_type": "image",
+        "original_storage_uri": "s3://media/originals/a/camera.jpg",
+        "thumbnail_storage_uri": "s3://media/derived/a/thumbnail.jpg",
+        "frame_storage_uris": [],
+        "occurred_at": "2026-08-29T00:00:00Z",
+    }
+
+    class Tagging:
+        def __init__(self, error: Exception) -> None:
+            self.error = error
+
+        def process(self, event) -> None:
+            raise self.error
+
+    def run(error: Exception):
+        monkeypatch.setattr(
+            worker_adapter,
+            "_build",
+            lambda: (object(), object(), object(), Tagging(error), object(), object()),
+        )
+        return worker_adapter.handler({"Records": [{"messageId": "message-1", "body": json.dumps(prepared)}]}, None)
+
+    assert run(PermanentTaggingError("stale", record=None)) == {"batchItemFailures": []}
+    assert run(TransientTaggingError("retry", record=None)) == {
+        "batchItemFailures": [{"itemIdentifier": "message-1"}],
+    }
 
 
 def test_manifest_configuration_is_used_by_production_worker(monkeypatch, tmp_path: Path) -> None:

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from backend.common.contracts.models import MediaPreparedEvent
+from backend.common.contracts.models import MediaPreparedEvent, MediaRecord
 from backend.common.providers.fakes import (
     DeterministicInferenceService,
     FixedClock,
@@ -25,23 +25,6 @@ def test_ready_record_and_completion_event_match_shared_json_schemas() -> None:
     storage = InMemoryObjectStorage()
     storage.put_bytes("originals/a/camera.jpg", b"image", content_type="image/jpeg")
     original_uri = "s3://media/originals/a/camera.jpg"
-    worker = TaggingWorker(
-        storage=storage,
-        inference=DeterministicInferenceService(
-            {
-                (original_uri,): InferenceResult(
-                    tag_counts={"dingo": 2},
-                    model_version="1.0.0",
-                )
-            }
-        ),
-        repository=InMemoryMediaRepository(),
-        publisher=RecordingEventPublisher(),
-        clock=FixedClock(datetime(2026, 8, 22, 12, 0, tzinfo=UTC)),
-        ids=SequenceIdGenerator(
-            [UUID("44444444-4444-4444-8444-444444444444")]
-        ),
-    )
     event = MediaPreparedEvent(
         schema_version="1.0",
         event_id=UUID("33333333-3333-4333-8333-333333333333"),
@@ -53,6 +36,39 @@ def test_ready_record_and_completion_event_match_shared_json_schemas() -> None:
         thumbnail_storage_uri="s3://media/derived/a/thumbnail.jpg",
         frame_storage_uris=[],
         occurred_at=datetime(2026, 8, 22, 11, 55, tzinfo=UTC),
+    )
+    repository = InMemoryMediaRepository()
+    repository.upsert(MediaRecord(
+        media_id=event.media_id,
+        owner_sub=event.owner_sub,
+        sha256=event.sha256,
+        file_name="camera.jpg",
+        media_type=event.media_type,
+        original_storage_uri=event.original_storage_uri,
+        thumbnail_storage_uri=event.thumbnail_storage_uri,
+        tag_counts={},
+        manual_tags=[],
+        model_version="pending",
+        status="prepared",
+        created_at=event.occurred_at,
+        updated_at=event.occurred_at,
+    ))
+    worker = TaggingWorker(
+        storage=storage,
+        inference=DeterministicInferenceService(
+            {
+                (original_uri,): InferenceResult(
+                    tag_counts={"dingo": 2},
+                    model_version="1.0.0",
+                )
+            }
+        ),
+        repository=repository,
+        publisher=RecordingEventPublisher(),
+        clock=FixedClock(datetime(2026, 8, 22, 12, 0, tzinfo=UTC)),
+        ids=SequenceIdGenerator(
+            [UUID("44444444-4444-4444-8444-444444444444")]
+        ),
     )
 
     outcome = worker.process(event)

@@ -150,10 +150,14 @@ class ManifestBundleLoader:
         if device not in {"cpu", "cuda", "mps"}:
             raise ManifestValidationError("device must be explicitly cpu, cuda, or mps")
         manifest = ModelManifest.parse(self._read(manifest_uri))
+        references = {
+            "detector": manifest.detector,
+            "classifier": manifest.classifier,
+            "labels": manifest.labels,
+        }
         artifacts = {
-            "detector": self._validated_bytes("detector", manifest.detector),
-            "classifier": self._validated_bytes("classifier", manifest.classifier),
-            "labels": self._validated_bytes("labels", manifest.labels),
+            name: self._validated_bytes(name, reference)
+            for name, reference in references.items()
         }
         cache_digest = hashlib.sha256(
             (manifest.model_version + "|" + "|".join(
@@ -161,7 +165,13 @@ class ManifestBundleLoader:
             )).encode("ascii")
         ).hexdigest()
         cache_root = self._cache_dir / manifest.model_version / cache_digest
-        paths = {name: cache_root / name for name in artifacts}
+        # Model runtimes such as MegaDetector use the filename extension to
+        # select a checkpoint loader. Preserve each manifest artifact's safe
+        # extension instead of caching it as an extensionless logical name.
+        paths = {
+            name: cache_root / f"{name}{_artifact_suffix(reference.uri, name)}"
+            for name, reference in references.items()
+        }
         cache_root.mkdir(parents=True, exist_ok=True)
         for name, path in paths.items():
             if not path.exists():
@@ -229,6 +239,16 @@ def _artifact(value: object, name: str) -> ArtifactReference:
     if not isinstance(digest, str) or re.fullmatch(r"[a-f0-9]{64}", digest) is None:
         raise ManifestValidationError(f"{name} SHA-256 must be lowercase hexadecimal")
     return ArtifactReference(uri=uri, sha256=digest)
+
+
+def _artifact_suffix(uri: str, name: str) -> str:
+    path_text = uri if _is_windows_path(uri) else unquote(urlparse(uri).path)
+    suffix = Path(path_text).suffix.casefold()
+    if not suffix:
+        return {"detector": ".pt", "classifier": ".pt", "labels": ".txt"}[name]
+    if re.fullmatch(r"\.[a-z0-9]{1,10}", suffix) is None:
+        raise ManifestValidationError(f"{name} artifact URI has an unsafe file extension")
+    return suffix
 
 
 def _is_windows_path(value: str) -> bool:

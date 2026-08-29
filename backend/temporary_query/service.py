@@ -141,6 +141,7 @@ class TemporaryQueryService:
         available = record.status in {"prepared", "ready"}
         return QueryResult(
             media_id=record.media_id,
+            file_name=record.file_name,
             media_type=record.media_type,
             status=record.status,
             original_url=(

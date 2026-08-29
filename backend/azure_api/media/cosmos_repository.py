@@ -16,6 +16,7 @@ from azure.core import MatchConditions
 
 from backend.common.contracts.models import MediaRecord
 from backend.common.providers.interfaces import ReservationResult
+from backend.common.species_names import canonical_species_name
 
 from .repository import MediaPage
 
@@ -217,7 +218,7 @@ class CosmosPagedMediaRepository:
         self, owner_sub: str, minimum_counts: dict[str, int], *, continuation_token: str | None = None
     ) -> MediaPage:
         records = self._query_owner(owner_sub)
-        normalized = {key.casefold(): value for key, value in minimum_counts.items()}
+        normalized = {canonical_species_name(key): value for key, value in minimum_counts.items()}
         filtered = [record for record in records if _meets_counts(record, normalized)]
         return self._page(filtered, continuation_token)
 
@@ -225,11 +226,11 @@ class CosmosPagedMediaRepository:
         self, owner_sub: str, species: str, *, continuation_token: str | None = None
     ) -> MediaPage:
         records = self._query_owner(owner_sub)
-        target = species.casefold()
+        target = canonical_species_name(species)
         filtered = [
             record for record in records
-            if target in {tag.casefold() for tag in record.tag_counts}
-            or target in {tag.casefold() for tag in record.manual_tags}
+            if target in {canonical_species_name(tag) for tag in record.tag_counts}
+            or target in {canonical_species_name(tag) for tag in record.manual_tags}
         ]
         return self._page(filtered, continuation_token)
 
@@ -281,10 +282,10 @@ def _record(item: dict[str, Any]) -> MediaRecord:
 
 
 def _meets_counts(record: MediaRecord, required: dict[str, int]) -> bool:
-    available = {tag.casefold(): count for tag, count in record.tag_counts.items()}
+    available = {canonical_species_name(tag): count for tag, count in record.tag_counts.items()}
     # Manual tags are presence-only, so they contribute one match.
     for tag in record.manual_tags:
-        available.setdefault(tag.casefold(), 1)
+        available.setdefault(canonical_species_name(tag), 1)
     return all(available.get(tag, 0) >= count for tag, count in required.items())
 
 

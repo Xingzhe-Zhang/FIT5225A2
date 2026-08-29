@@ -65,3 +65,32 @@ def test_invalid_azure_payload_is_a_bad_gateway_error() -> None:
         client.query_species("token", {"species": "kangaroo"})
 
     assert captured.value.status_code == 502
+
+
+def test_azure_validation_error_is_preserved_for_the_api_caller() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "QUERY_VALIDATION_FAILED",
+                    "message": "URL does not identify a canonical thumbnail object",
+                    "request_id": str(UUID(int=2)),
+                }
+            },
+        )
+    )
+    client = AzureDataApiClient(
+        "https://data.example.test",
+        client=httpx.Client(transport=transport),
+    )
+
+    with pytest.raises(ApiError) as captured:
+        client.query_thumbnail(
+            "token",
+            {"thumbnail_url": "https://media.example.test/originals/1/camera.jpg"},
+        )
+
+    assert captured.value.status_code == 422
+    assert captured.value.code == "QUERY_VALIDATION_FAILED"
+    assert captured.value.message == "URL does not identify a canonical thumbnail object"

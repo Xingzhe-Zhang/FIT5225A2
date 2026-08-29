@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import unquote
 from uuid import UUID
 
-from backend.common.contracts.models import MediaPreparedEvent, TaggingCompletedEvent
+from backend.common.contracts.models import MediaPreparedEvent, MediaRecord, TaggingCompletedEvent
 from backend.common.providers.fakes import (
     DeterministicInferenceService,
     FixedClock,
@@ -80,6 +81,22 @@ def make_worker(*, event: MediaPreparedEvent, result: InferenceResult):
         storage.put_bytes(key, b"prepared-image", content_type="image/jpeg")
     inference = CountingInference({tuple(inference_uris): result})
     repository = CountingRepository()
+    repository.upsert(MediaRecord(
+        media_id=event.media_id,
+        owner_sub=event.owner_sub,
+        sha256=event.sha256,
+        file_name=unquote(str(event.original_storage_uri).rsplit("/", 1)[-1]),
+        media_type=event.media_type,
+        original_storage_uri=event.original_storage_uri,
+        thumbnail_storage_uri=event.thumbnail_storage_uri,
+        tag_counts={},
+        manual_tags=[],
+        model_version="pending",
+        status="prepared",
+        created_at=event.occurred_at,
+        updated_at=event.occurred_at,
+    ))
+    repository.upsert_count = 0
     publisher = RecordingEventPublisher()
     worker = TaggingWorker(
         storage=storage,
