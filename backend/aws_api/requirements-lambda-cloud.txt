@@ -1,0 +1,5 @@
+# Cloud adapters are installed separately because the base lock file is kept
+# hash-pinned for the small Lambda runtime dependencies.
+azure-cosmos==4.9.0
+azure-identity==1.25.0
+boto3==1.40.26

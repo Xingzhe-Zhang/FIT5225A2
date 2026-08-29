@@ -1,0 +1,10 @@
+fastapi==0.115.12
+httpx==0.28.1
+mangum==0.19.0
+Pillow==12.2.0
+pydantic==2.10.6
+pydantic-settings==2.7.1
+PyJWT[crypto]==2.10.1
+python-multipart==0.0.32
+azure-cosmos==4.9.0
+boto3==1.40.26
