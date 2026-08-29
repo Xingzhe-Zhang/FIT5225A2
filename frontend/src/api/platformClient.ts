@@ -56,7 +56,14 @@ export class PlatformClient implements QueryClient, ManagementClient, Subscripti
       method: "POST",
       body,
     });
-    return response.results;
+    return response.results.flatMap((result) => result.original_url ? [{
+      media_id: result.media_id,
+      media_type: result.media_type,
+      original_url: result.original_url,
+      thumbnail_url: result.thumbnail_url,
+      tag_counts: result.tag_counts,
+      manual_tags: result.manual_tags,
+    }] : []);
   }
 
   reserve(

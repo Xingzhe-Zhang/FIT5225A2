@@ -119,6 +119,11 @@ def test_repository_queries_and_deletes_owner_scoped_records() -> None:
     assert repository.query_by_tags("owner", {"night": 1}) == [owned]
     assert repository.query_by_tags("owner", {"night": 2}) == []
     assert repository.query_by_species("owner", "night") == [owned]
+    species = make_record(media_id="33333333-3333-4333-8333-333333333333").model_copy(
+        update={"tag_counts": {"Alectura_lathami": 1}}
+    )
+    repository.upsert(species)
+    assert repository.query_by_species("owner", "Alectura lathami") == [species]
     assert repository.find_by_storage_uri("owner", str(owned.thumbnail_storage_uri)) == owned
 
     assert repository.delete("owner", owned.media_id) is True

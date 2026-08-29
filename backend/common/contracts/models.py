@@ -194,6 +194,7 @@ class ThumbnailQuery(StrictModel):
 
 class QueryResult(StrictModel):
     media_id: UUID
+    file_name: Annotated[str, StringConstraints(min_length=1, max_length=255)] | None = None
     media_type: Literal["image", "video"]
     status: Literal["reserved", "uploaded", "processing", "prepared", "ready", "deleting", "failed"]
     original_url: HttpUrl | None
