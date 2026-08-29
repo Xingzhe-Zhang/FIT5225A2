@@ -88,6 +88,25 @@ test("renders consistent previews, filenames, readable species and status filter
   expect(screen.getByLabelText("clip.mp4 preview")).toBeInTheDocument();
 });
 
+test("stacks detected species vertically without hiding their counts", async () => {
+  const media: MediaResult = {
+    media_id: "two-species-video",
+    file_name: "two-species-cat-cattle-4s.mp4",
+    media_type: "video",
+    status: "ready",
+    original_url: "https://downloads.example.test/originals/two-species-cat-cattle-4s.mp4",
+    thumbnail_url: "https://downloads.example.test/derived/two-species-cat-cattle-4s.jpg",
+    tag_counts: { Felis_catus: 2, Bos_taurus: 18 },
+    manual_tags: [],
+  };
+  renderGallery(client([media]));
+
+  const catTag = await screen.findByText("Felis catus × 2");
+  const detectedTags = catTag.closest(".table-tag-list");
+  expect(detectedTags).toHaveClass("table-tag-list-vertical");
+  expect(within(detectedTags as HTMLElement).getByText("Bos taurus × 18")).toBeInTheDocument();
+});
+
 test("keeps failed details collapsed and uses a calm summary with the error code", async () => {
   const failed: MediaResult = {
     media_id: "failed-1",

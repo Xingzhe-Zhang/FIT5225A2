@@ -106,7 +106,7 @@ export function LibraryPage() {
             <MediaGallery client={mediaClient} refreshVersion={libraryVersion} localPreviews={localPreviews} />
           </section>
           <section id="search" className="workspace-card workspace-card-wide">
-            <QueryPanel client={platformClient} />
+            <QueryPanel client={platformClient} onLibraryChanged={refreshLibrary} />
           </section>
           <section id="manage" className="workspace-card">
             <ManagementPanel client={platformClient} onLibraryChanged={refreshLibrary} />
