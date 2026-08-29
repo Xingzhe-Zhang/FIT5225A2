@@ -23,15 +23,120 @@ const authenticated: AuthContextValue = {
 
 afterEach(cleanup);
 
-function renderPanel(search: QueryClient["search"] = vi.fn().mockResolvedValue({ results: [] })) {
-  const client: QueryClient = { search };
+function renderPanel(
+  search: QueryClient["search"] = vi.fn().mockResolvedValue({ results: [] }),
+  overrides: Record<string, unknown> = {},
+  onLibraryChanged?: () => Promise<void>,
+) {
+  const client = {
+    search,
+    updateTags: vi.fn().mockResolvedValue({ results: [] }),
+    deleteMedia: vi.fn().mockResolvedValue({ results: [] }),
+    deleteMediaById: vi.fn().mockResolvedValue({
+      result: { media_id: null, status: "deleted", error: null },
+    }),
+    ...overrides,
+  };
   render(
     <AuthContext.Provider value={authenticated}>
-      <QueryPanel client={client} />
+      <QueryPanel client={client} onLibraryChanged={onLibraryChanged} />
     </AuthContext.Provider>,
   );
   return client;
 }
+
+test("deletes selected query results and retains partial failures", async () => {
+  const first: QueryResponse["results"][number] = {
+    media_id: "delete-first",
+    media_type: "image",
+    status: "ready",
+    original_url: "https://signed.example.test/originals/delete-first.jpg",
+    thumbnail_url: null,
+    tag_counts: { dingo: 1 },
+  };
+  const second: QueryResponse["results"][number] = {
+    ...first,
+    media_id: "delete-second",
+    original_url: "https://signed.example.test/originals/delete-second.jpg",
+  };
+  const deleteMedia = vi.fn().mockResolvedValue({
+    results: [
+      { media_id: first.media_id, url: first.original_url, status: "deleted", error: null },
+      { media_id: second.media_id, url: second.original_url, status: "failed", error: "storage timeout" },
+    ],
+  });
+  const onLibraryChanged = vi.fn().mockResolvedValue(undefined);
+  renderPanel(
+    vi.fn().mockResolvedValue({ results: [first, second] }),
+    { deleteMedia },
+    onLibraryChanged,
+  );
+
+  fireEvent.change(screen.getByLabelText("Species 1"), { target: { value: "dingo" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Select all visible media" }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
+  expect(screen.getByRole("dialog", { name: "Confirm deletion" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+
+  await waitFor(() => expect(deleteMedia).toHaveBeenCalledWith(
+    [first.original_url, second.original_url],
+    "access-token",
+  ));
+  expect(screen.queryByText("delete-first.jpg")).not.toBeInTheDocument();
+  expect(screen.getByText("delete-second.jpg")).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("storage timeout");
+  expect(onLibraryChanged).toHaveBeenCalledTimes(1);
+});
+
+test("applies manual tags to selected query results", async () => {
+  const first: QueryResponse["results"][number] = {
+    media_id: "query-first",
+    media_type: "image",
+    status: "ready",
+    original_url: "https://signed.example.test/originals/first.jpg",
+    thumbnail_url: null,
+    tag_counts: { dingo: 1 },
+    manual_tags: [],
+  };
+  const second: QueryResponse["results"][number] = {
+    ...first,
+    media_id: "query-second",
+    original_url: "https://signed.example.test/originals/second.jpg",
+  };
+  const updateTags = vi.fn().mockResolvedValue({
+    results: [
+      { media_id: first.media_id, url: first.original_url, status: "updated" },
+      { media_id: second.media_id, url: second.original_url, status: "updated" },
+    ],
+  });
+  renderPanel(vi.fn().mockResolvedValue({ results: [first, second] }), { updateTags });
+
+  fireEvent.change(screen.getByLabelText("Species 1"), { target: { value: "dingo" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Select all visible media" }));
+  fireEvent.change(screen.getByLabelText("Query result tags"), {
+    target: { value: "Batch Demo, night" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add tags" }));
+
+  await waitFor(() => expect(updateTags).toHaveBeenCalledWith(
+    [first.original_url, second.original_url],
+    ["batch demo", "night"],
+    1,
+    "access-token",
+  ));
+  expect(screen.getAllByText("batch demo")).toHaveLength(2);
+
+  fireEvent.click(screen.getByRole("button", { name: "Remove tags" }));
+  await waitFor(() => expect(updateTags).toHaveBeenLastCalledWith(
+    [first.original_url, second.original_url],
+    ["batch demo", "night"],
+    0,
+    "access-token",
+  ));
+  expect(screen.queryByText("batch demo")).not.toBeInTheDocument();
+});
 
 test("submits every tag row as an AND minimum-count query", async () => {
   const search = vi.fn().mockResolvedValue({ results: [] });

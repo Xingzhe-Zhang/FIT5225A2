@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { useAuth } from "../auth/AuthContext";
+import type { BulkDeleteResponse, SingleDeleteResponse, TagUpdateResponse } from "../api/mediaTypes";
 import { MediaTable } from "../library/MediaTable";
 import type { MediaResult } from "../library/MediaGallery";
 import { Icon } from "../ui/Icon";
@@ -30,6 +31,14 @@ export interface QueryClient {
     payload: Record<string, unknown>,
     accessToken: string,
   ): Promise<QueryResponse>;
+  updateTags(
+    urls: string[],
+    tags: string[],
+    operation: 0 | 1,
+    accessToken: string,
+  ): Promise<TagUpdateResponse>;
+  deleteMedia(urls: string[], accessToken: string): Promise<BulkDeleteResponse>;
+  deleteMediaById(mediaId: string, accessToken: string): Promise<SingleDeleteResponse>;
 }
 
 interface TagRow {
@@ -54,7 +63,13 @@ function validateThumbnailUrl(value: string): string | null {
   }
 }
 
-export function QueryPanel({ client }: { client: QueryClient }) {
+export function QueryPanel({
+  client,
+  onLibraryChanged,
+}: {
+  client: QueryClient;
+  onLibraryChanged?(): Promise<void>;
+}) {
   const auth = useAuth();
   const [mode, setMode] = useState<QueryMode>("tags");
   const [rows, setRows] = useState<TagRow[]>([{ species: "", count: "1" }]);
@@ -66,6 +81,10 @@ export function QueryPanel({ client }: { client: QueryClient }) {
   const [filter, setFilter] = useState<"all" | "image" | "video">("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [actionTags, setActionTags] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const filteredResults = useMemo(
     () => (results ?? []).filter((item) => filter === "all" || item.media_type === filter),
@@ -76,6 +95,8 @@ export function QueryPanel({ client }: { client: QueryClient }) {
     image: results?.filter((item) => item.media_type === "image").length ?? 0,
     video: results?.filter((item) => item.media_type === "video").length ?? 0,
   }), [results]);
+  const selectedResults = (results ?? []).filter((item) => selected.has(item.media_id));
+  const selectedUrls = selectedResults.flatMap((item) => item.original_url ? [item.original_url] : []);
 
   useEffect(() => setPage(1), [filter]);
 
@@ -128,6 +149,7 @@ export function QueryPanel({ client }: { client: QueryClient }) {
       const response = await client.search(mode, payload, auth.accessToken);
       setResults(response.results);
       setSelected(new Set());
+      setActionMessage(null);
       setPage(1);
     } catch (caught) {
       setResults(null);
@@ -152,6 +174,92 @@ export function QueryPanel({ client }: { client: QueryClient }) {
       mediaIds.forEach((id) => checked ? next.add(id) : next.delete(id));
       return next;
     });
+  }
+
+  async function updateSelectedTags(operation: 0 | 1) {
+    if (!auth.accessToken || selectedUrls.length === 0) return;
+    const normalized = [...new Set(
+      actionTags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean),
+    )];
+    setActionMessage(null);
+    if (normalized.length === 0) {
+      setError("Enter at least one tag.");
+      return;
+    }
+    setActionBusy(true);
+    setError(null);
+    try {
+      const response = await client.updateTags(selectedUrls, normalized, operation, auth.accessToken);
+      const updatedIds = new Set(
+        response.results
+          .filter((outcome) => outcome.status === "updated" && outcome.media_id)
+          .map((outcome) => outcome.media_id as string),
+      );
+      setResults((current) => (current ?? []).map((result) => {
+        if (!updatedIds.has(result.media_id)) return result;
+        const manual = new Set(result.manual_tags ?? []);
+        normalized.forEach((tag) => operation === 1 ? manual.add(tag) : manual.delete(tag));
+        return { ...result, manual_tags: [...manual].sort() };
+      }));
+      const failures = response.results.filter(
+        (outcome) => outcome.status !== "updated" && outcome.status !== "unchanged",
+      );
+      if (updatedIds.size > 0) {
+        setActionMessage(`Tags updated for ${updatedIds.size} item(s).`);
+        await onLibraryChanged?.();
+      }
+      if (failures.length > 0) {
+        setError(`Tags were not updated for ${failures.length} item(s).`);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The tag update failed.");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!auth.accessToken || selectedResults.length === 0) return;
+    setActionBusy(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      const deletedIds = new Set<string>();
+      const failures: string[] = [];
+      if (selectedUrls.length > 0) {
+        const response = await client.deleteMedia(selectedUrls, auth.accessToken);
+        response.results.forEach((outcome) => {
+          if (outcome.status === "deleted" && outcome.media_id) deletedIds.add(outcome.media_id);
+          else failures.push(outcome.error || outcome.status);
+        });
+      }
+      const withoutUrls = selectedResults.filter((item) => !item.original_url);
+      const responses = await Promise.all(
+        withoutUrls.map((item) => client.deleteMediaById(item.media_id, auth.accessToken!)),
+      );
+      responses.forEach((response) => {
+        if (response.result.status === "deleted" && response.result.media_id) {
+          deletedIds.add(response.result.media_id);
+        } else {
+          failures.push(response.result.error || response.result.status);
+        }
+      });
+      setResults((current) => (current ?? []).filter((item) => !deletedIds.has(item.media_id)));
+      setSelected((current) => new Set([...current].filter((id) => !deletedIds.has(id))));
+      setConfirmingDelete(false);
+      if (deletedIds.size > 0) {
+        setActionMessage(`${deletedIds.size} selected item(s) deleted.`);
+        await onLibraryChanged?.();
+      }
+      if (failures.length > 0) {
+        setError(`Could not delete ${failures.length} item(s): ${failures.join("; ")}`);
+      }
+    } catch (caught) {
+      setConfirmingDelete(false);
+      setError(caught instanceof Error ? caught.message : "The selected media could not be deleted.");
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   return (
@@ -247,6 +355,7 @@ export function QueryPanel({ client }: { client: QueryClient }) {
       </form>
 
       {error && <p role="alert">{error}</p>}
+      {actionMessage && <p role="status">{actionMessage}</p>}
       {results?.length === 0 && <p className="empty-state">No matching media found.</p>}
       {results && results.length > 0 && (
         <div className="query-results">
@@ -259,8 +368,23 @@ export function QueryPanel({ client }: { client: QueryClient }) {
                 </button>
               ))}
             </div>
-            {selected.size > 0 && <button type="button" className="button-link icon-label" onClick={() => setSelected(new Set())}>{selected.size} selected <Icon name="clear" />Clear</button>}
           </div>
+          {selected.size > 0 && (
+            <div className="library-bulk-actions" aria-label="Query result actions">
+              <strong>{selected.size} selected</strong>
+              <label className="visually-hidden" htmlFor="query-result-tags">Query result tags</label>
+              <input
+                id="query-result-tags"
+                value={actionTags}
+                onChange={(event) => setActionTags(event.target.value)}
+                placeholder="Tags: night, field-note"
+              />
+              <button className="icon-label" type="button" disabled={actionBusy || selectedUrls.length === 0} onClick={() => void updateSelectedTags(1)}><Icon name="add" />Add tags</button>
+              <button className="secondary icon-label" type="button" disabled={actionBusy || selectedUrls.length === 0} onClick={() => void updateSelectedTags(0)}><Icon name="remove" />Remove tags</button>
+              <button type="button" className="button-danger-subtle icon-label" disabled={actionBusy} onClick={() => setConfirmingDelete(true)}><Icon name="delete" />Delete selected</button>
+              <button type="button" className="button-link icon-label" disabled={actionBusy} onClick={() => setSelected(new Set())}><Icon name="clear" />Clear</button>
+            </div>
+          )}
           {filteredResults.length === 0 ? <p className="empty-state">No matching media in this filter.</p> : (
             <MediaTable
               items={filteredResults}
@@ -272,6 +396,17 @@ export function QueryPanel({ client }: { client: QueryClient }) {
               onTogglePage={togglePage}
             />
           )}
+        </div>
+      )}
+      {confirmingDelete && (
+        <div className="modal-backdrop">
+          <div className="dialog" role="dialog" aria-label="Confirm deletion" aria-modal="true">
+            <p>{`Delete ${selectedResults.length} selected item(s)?`} This cannot be undone.</p>
+            <div className="dialog-actions">
+              <button className="secondary" type="button" disabled={actionBusy} onClick={() => setConfirmingDelete(false)}>Cancel</button>
+              <button className="button-danger" type="button" disabled={actionBusy} onClick={() => void deleteSelected()}>Confirm delete</button>
+            </div>
+          </div>
         </div>
       )}
     </section>
