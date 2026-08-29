@@ -88,7 +88,7 @@ function CompactTags({
   const visible = entries.slice(0, visibleLimit);
   const hidden = entries.slice(visibleLimit);
   return (
-    <div className="table-tag-list">
+    <div className="table-tag-list table-tag-list-vertical">
       {visible.map(([tag, count]) => (
         <span className={`tag-chip${manual ? " tag-chip-manual" : ""}`} key={`${manual ? "manual" : "detected"}-${tag}`}>
           {displaySpecies(tag)}{count === null ? "" : ` × ${count}`}
