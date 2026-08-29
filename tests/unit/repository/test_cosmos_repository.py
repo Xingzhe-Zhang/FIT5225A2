@@ -176,3 +176,21 @@ def test_reservation_delete_does_not_remove_replaced_etag_document() -> None:
     assert repository._delete_reservation("owner", reservation_id, etag="old-etag") is False
     assert ("owner", reservation_id) in container.documents
     assert container.deleted == []
+
+
+def test_thumbnail_uri_with_media_id_uses_owner_partition_point_read() -> None:
+    class PointReadOnlyContainer(FakeCosmosContainer):
+        def query_items(self, **_kwargs):
+            raise AssertionError("standard derived thumbnail should not require a query")
+
+    container = PointReadOnlyContainer()
+    repository = CosmosPagedMediaRepository(container)
+    media_id = UUID("11111111-1111-4111-8111-111111111111")
+    thumbnail_uri = f"s3://media/derived/{media_id}/{'a' * 64}/thumbnail.jpg"
+    media = _media_record(media_id).model_copy(
+        update={"thumbnail_storage_uri": thumbnail_uri}
+    )
+    repository.upsert(media)
+
+    assert repository.find_by_storage_uri("owner", thumbnail_uri) == media
+    assert repository.find_by_storage_uri("other-owner", thumbnail_uri) is None
