@@ -71,9 +71,9 @@ class Classifier(Protocol):
 class InferencePipeline:
     """CPU-safe orchestration around injected detector/classifier adapters.
 
-    Counting rule: every accepted animal detection contributes at most one count.
-    Ordered video inputs are processed in order and aggregated across all supplied
-    one-frame-per-second objects.
+    Counting rule: every accepted animal detection contributes at most one count
+    within its frame. Ordered video inputs are processed in order, and each species
+    keeps the maximum count observed in any supplied one-frame-per-second object.
     """
 
     def __init__(
@@ -115,6 +115,7 @@ class InferencePipeline:
         counts: Counter[str] = Counter()
         evidence: list[PredictionEvidence] = []
         for source_uri in storage_uris:
+            frame_counts: Counter[str] = Counter()
             payload = self.object_reader.read(source_uri)
             try:
                 image = self.decoder.decode(payload)
@@ -139,7 +140,7 @@ class InferencePipeline:
                         f"classifier returned class index {classification.class_index} outside manifest labels"
                     )
                 species = self.labels[classification.class_index]
-                counts[species] += 1
+                frame_counts[species] += 1
                 evidence.append(
                     PredictionEvidence(
                         source_uri=source_uri,
@@ -148,6 +149,8 @@ class InferencePipeline:
                         classification_confidence=classification.confidence,
                     )
                 )
+            for species, frame_count in frame_counts.items():
+                counts[species] = max(counts[species], frame_count)
         return StructuredInferenceResult(
             tag_counts=dict(counts),
             model_version=self.model_version,
