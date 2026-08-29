@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 from azure.core import MatchConditions
@@ -202,6 +203,29 @@ class CosmosPagedMediaRepository:
         return _record(items[0]) if items else None
 
     def find_by_storage_uri(self, owner_sub: str, storage_uri: str) -> MediaRecord | None:
+        # Current derived keys include the media id. Prefer an owner-partitioned
+        # point read for those keys: it is cheaper than a Cosmos query and
+        # avoids relying on an indexed URI lookup for the normal thumbnail
+        # search path. The URI is still compared in full so a caller cannot use
+        # a guessed media id with a different object key.
+        parsed = urlparse(storage_uri)
+        path_parts = parsed.path.lstrip("/").split("/")
+        if parsed.scheme == "s3" and len(path_parts) >= 3 and path_parts[0] == "derived":
+            try:
+                media_id = UUID(path_parts[1])
+            except ValueError:
+                media_id = None
+            if media_id is not None:
+                record = self.get(owner_sub, media_id)
+                if record is not None and storage_uri in {
+                    str(record.original_storage_uri),
+                    str(record.thumbnail_storage_uri) if record.thumbnail_storage_uri else "",
+                }:
+                    return record
+                return None
+
+        # Keep the indexed lookup for legacy derived keys which were created
+        # before media ids became part of the object path.
         query = (
             "SELECT * FROM c WHERE c.kind = 'media' AND "
             "(c.original_storage_uri = @uri OR c.thumbnail_storage_uri = @uri)"

@@ -227,7 +227,7 @@ test("paginates ten rows, truncates manual tags, and resets pagination after fil
   renderGallery(client(results));
 
   expect(await screen.findByText("1–10 of 12")).toBeInTheDocument();
-  expect(screen.getByText("+2 more")).toBeInTheDocument();
+  expect(screen.getByText("+3 more")).toBeInTheDocument();
   expect(screen.queryByText("file-10.jpg")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Next page" }));

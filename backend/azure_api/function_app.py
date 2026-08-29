@@ -17,13 +17,37 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.azure_api.media.cosmos_repository import CosmosPagedMediaRepository
-from backend.azure_api.queries.service import QueryService, TrustedThumbnailNormalizer
+from backend.azure_api.queries.service import (
+    MediaNotFoundError,
+    QueryService,
+    ThumbnailUrlError,
+    TrustedThumbnailNormalizer,
+)
 from backend.common.auth.dependencies import require_auth
 from backend.common.auth.jwt import CognitoJwtVerifier, HttpJwksProvider
 from backend.common.auth.models import AuthContext
 from backend.common.config.settings import AppSettings
 from backend.common.contracts.models import MediaRecord, SpeciesQuery, TagQuery, ThumbnailQuery
 from backend.common.errors.models import ApiError
+
+
+def _query_thumbnail_for_owner(
+    service: QueryService,
+    owner_sub: str,
+    payload: ThumbnailQuery,
+) -> MediaRecord:
+    """Translate domain failures at the Azure HTTP boundary.
+
+    Without this translation FastAPI turns an expected missing/invalid
+    thumbnail into a 500, which the AWS façade can only report as a generic
+    502.
+    """
+    try:
+        return service.query_thumbnail(owner_sub, payload)
+    except MediaNotFoundError as error:
+        raise ApiError("QUERY_NOT_FOUND", str(error), 404) from error
+    except (ThumbnailUrlError, ValueError) as error:
+        raise ApiError("QUERY_VALIDATION_FAILED", str(error), 422) from error
 
 
 @lru_cache(maxsize=1)
@@ -127,7 +151,7 @@ def create_data_api() -> FastAPI:
 
     @app.post("/internal/query/thumbnail", response_model=MediaRecord)
     def query_thumbnail(payload: ThumbnailQuery, auth: Annotated[AuthContext, Depends(require_auth)]) -> MediaRecord:
-        return query_service().query_thumbnail(auth.sub, payload)
+        return _query_thumbnail_for_owner(query_service(), auth.sub, payload)
 
     @app.get("/internal/media/{media_id}", response_model=MediaRecord)
     def get_media(media_id: str, auth: Annotated[AuthContext, Depends(require_auth)]) -> MediaRecord:
