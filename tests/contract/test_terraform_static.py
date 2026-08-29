@@ -178,6 +178,26 @@ def test_external_identity_providers_are_real_opt_in_cognito_integrations() -> N
         assert "default = false" in block.group(1)
 
 
+def test_microsoft_external_login_has_a_secret_free_deployment_handoff() -> None:
+    example = (ROOT / "infra" / "aws" / "terraform.tfvars.example").read_text(encoding="utf-8")
+    preflight = (ROOT / "scripts" / "microsoft-auth-preflight.ps1").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'enable_microsoft_provider = false' in example
+    assert 'microsoft_tenant          = "common"' in example
+    assert "/oauth2/idpresponse" in example
+    for variable in (
+        "TF_VAR_enable_microsoft_provider",
+        "TF_VAR_microsoft_tenant",
+        "TF_VAR_microsoft_client_id",
+        "TF_VAR_microsoft_client_secret",
+    ):
+        assert variable in preflight
+        assert variable in readme
+    assert "microsoft-auth-preflight.ps1" in readme
+    assert "--provider Microsoft --require-user" in readme
+
+
 def test_obsolete_lambda_stub_is_rejected() -> None:
     assert not (ROOT / "infra" / "aws" / "lambda_stub").exists()
 

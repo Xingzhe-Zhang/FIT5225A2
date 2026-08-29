@@ -22,3 +22,11 @@ azure_data_api_base_url = "https://replace-function-app.azurewebsites.net"
 # Set enable_google_provider or enable_microsoft_provider to true only after registration.
 # TF_VAR_google_client_id / TF_VAR_google_client_secret
 # TF_VAR_microsoft_client_id / TF_VAR_microsoft_client_secret
+
+# Microsoft Entra external login (personal and organisational accounts):
+# 1. Register a Web application in Entra with this exact redirect URI:
+#    https://<cognito_domain_prefix>.auth.<aws_region>.amazoncognito.com/oauth2/idpresponse
+# 2. Set these non-secret values here or through TF_VAR_* environment variables.
+# 3. Supply the client ID and client secret only through the deployment shell.
+enable_microsoft_provider = false
+microsoft_tenant          = "common"

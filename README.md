@@ -99,6 +99,62 @@ Function and update the AWS worker configuration.
    read-only checks pass. Never paste access tokens or provider secrets into
    chat or source control.
 
+## Microsoft external login handoff
+
+Create a Microsoft Entra App Registration that accepts accounts in any
+organisational directory and personal Microsoft accounts. Add this **Web**
+redirect URI exactly (it is Cognito's callback, not the frontend callback):
+
+```text
+https://<cognito-domain-prefix>.auth.<aws-region>.amazoncognito.com/oauth2/idpresponse
+```
+
+Keep `enable_microsoft_provider = false` in committed files. In the deployment
+PowerShell session, enable Microsoft and inject the Entra application ID and
+secret as process-only Terraform variables:
+
+```powershell
+$env:TF_VAR_enable_microsoft_provider = "true"
+$env:TF_VAR_microsoft_tenant = "common"
+$env:TF_VAR_microsoft_client_id = "<ENTRA_APPLICATION_CLIENT_ID>"
+$secureMicrosoftSecret = Read-Host "Entra client secret" -AsSecureString
+$secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureMicrosoftSecret)
+try {
+  $env:TF_VAR_microsoft_client_secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
+}
+```
+
+Set the deployed frontend URLs in `infra/aws/terraform.tfvars`, then check and
+apply the AWS stack:
+
+```powershell
+.\scripts\microsoft-auth-preflight.ps1 -CognitoDomainPrefix <COGNITO_DOMAIN_PREFIX> -AwsRegion ap-southeast-2
+cd infra\aws
+terraform init
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
+```
+
+After a real **Continue with Microsoft** login reaches the protected Library,
+verify Cognito configuration and the resulting federated user without printing
+user attributes or tokens:
+
+```powershell
+cd ..\..
+python scripts\check_external_provider.py --user-pool-id <USER_POOL_ID> --app-client-id <APP_CLIENT_ID> --provider Microsoft --require-user --region ap-southeast-2
+```
+
+Clear the process secret when deployment is finished:
+
+```powershell
+Remove-Item Env:TF_VAR_microsoft_client_secret -ErrorAction SilentlyContinue
+```
+
+The Microsoft button is intentionally hidden until the deployed `/auth/config`
+advertises the provider.
+
 After the first infrastructure apply, re-run the Azure stack whenever the
 Cosmos container definitions change. The cloud API expects the `media`,
 `subscriptions`, `delivery-ledger`, and `deletion-operations` containers. Then
