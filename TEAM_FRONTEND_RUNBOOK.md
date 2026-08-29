@@ -289,7 +289,65 @@ aws lambda update-function-code --function-name pacific-bioarchive-development-m
 aws lambda wait function-updated --function-name pacific-bioarchive-development-media-worker
 ```
 
-### 6. Terraform state 和变更规则
+### 6. Google 外部账号登录（Rubric 3.4）
+
+Google 控制台创建 **Web application** OAuth client。开发演示使用：
+
+- Authorized JavaScript origin：`http://localhost:5173`
+- Authorized redirect URI：`https://pba826-group9.auth.ap-southeast-2.amazoncognito.com/oauth2/idpresponse`
+
+Redirect URI 是 Cognito 的 `/oauth2/idpresponse`，不是前端的
+`/auth/callback`。OAuth consent screen 若为 Testing，必须把演示账号加入
+Test users。只使用 `openid email profile`，Client Secret 不得写入仓库、
+`terraform.tfvars`、`.env.local` 或聊天。
+
+Windows PowerShell（必须在已激活的 Python 3.12 环境中）：
+
+```powershell
+$env:AWS_PROFILE = "pba-team"
+$env:AWS_REGION = "ap-southeast-2"
+$env:TF_VAR_enable_google_provider = "true"
+$env:TF_VAR_enable_microsoft_provider = "false"
+$env:TF_VAR_google_client_id = "<GOOGLE_WEB_CLIENT_ID>"
+$secureGoogleSecret = Read-Host "Google OAuth client secret" -AsSecureString
+$secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureGoogleSecret)
+try {
+  $env:TF_VAR_google_client_secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
+}
+
+.\scripts\google-auth-preflight.ps1 -CognitoDomainPrefix pba826-group9 -AwsRegion ap-southeast-2
+$currentWorkerImage = aws lambda get-function --function-name pacific-bioarchive-development-media-worker --query "Code.ImageUri" --output text
+Set-Location infra\aws
+terraform plan -input=false -lock=true -var-file=terraform.tfvars "-var=worker_image_uri=$currentWorkerImage" '-target=aws_cognito_identity_provider.google[0]' '-target=aws_cognito_user_pool_client.web' '-target=aws_lambda_function.api'
+terraform apply -input=true -lock=true -var-file=terraform.tfvars "-var=worker_image_uri=$currentWorkerImage" '-target=aws_cognito_identity_provider.google[0]' '-target=aws_cognito_user_pool_client.web' '-target=aws_lambda_function.api'
+Remove-Item Env:TF_VAR_google_client_secret -ErrorAction SilentlyContinue
+Set-Location ..\..
+```
+
+计划必须只有：创建 Google IdP、更新 Cognito web client、更新 API Lambda，
+且 `0 to destroy`；否则输入 `no` 并停止。不要保存含 OAuth secret 的 plan。
+
+启动前端后点击 **Continue with Google**，完成 Google 账号要求的 MFA，并确认
+浏览器返回 `http://localhost:5173/auth/callback` 后进入受保护的 Library。Google
+负责 MFA，Cognito 接收成功的外部身份断言并创建 `EXTERNAL_PROVIDER` 用户记录。
+最后用只读脚本证明 AWS 中已有记录（脚本不会输出用户名、属性或 token）：
+
+```powershell
+python scripts\check_external_provider.py --user-pool-id ap-southeast-2_XQbfs4ef4 --app-client-id 6fp1i37u3jtcoe9sggbe71uocn --provider Google --require-user --region ap-southeast-2 --profile pba-team
+```
+
+验收输出必须包含 `provider_type: Google`、
+`authorization_code_flow: true`、`required_attribute_mappings: true` 和
+`federated_user_count` 至少为 1。这同时证明 UI 完成外部账号登录、外部账号 MFA
+挑战已通过，以及 AWS Cognito 中存在对应记录。
+
+macOS 使用相同的 Google 控制台配置和 Terraform targets；在当前 shell 用
+`export TF_VAR_...` 注入非秘密变量，并用 `read -s` 读取 secret。不要把 secret
+写入 shell profile 或历史记录。
+
+### 7. Terraform state 和变更规则
 
 `terraform.tfstate` 与 `terraform.tfvars` 是本地敏感文件且不得提交。云资源已存在：
 
@@ -308,7 +366,7 @@ aws lambda wait function-updated --function-name pacific-bioarchive-development-
 bash scripts/lock-terraform-providers.sh
 ```
 
-### 7. 部署后验证
+### 8. 部署后验证
 
 ```bash
 curl -i https://j85cs8gf3d.execute-api.ap-southeast-2.amazonaws.com/health
@@ -329,7 +387,7 @@ aws logs tail /aws/lambda/pacific-bioarchive-development-api --since 10m --forma
 aws logs tail /aws/lambda/pacific-bioarchive-development-media-worker --since 10m --format short
 ```
 
-### 8. 安全和提交检查
+### 9. 安全和提交检查
 
 不得提交或分享云密钥/密码/MFA、Cognito token、OAuth secret、Cosmos key、`terraform.tfvars`、`*.tfstate*`、`.env.local`、构建产物、模型权重或本地依赖目录。
 

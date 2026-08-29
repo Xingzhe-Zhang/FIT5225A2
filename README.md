@@ -99,6 +99,73 @@ Function and update the AWS worker configuration.
    read-only checks pass. Never paste access tokens or provider secrets into
    chat or source control.
 
+## Google external login handoff
+
+Create a Google OAuth 2.0 client with application type **Web application**.
+For local testing, set the authorised JavaScript origin to
+`http://localhost:5173`. Add this authorised redirect URI exactly (it is
+Cognito's callback, not the frontend callback):
+
+```text
+https://<cognito-domain-prefix>.auth.<aws-region>.amazoncognito.com/oauth2/idpresponse
+```
+
+If the Google OAuth consent screen is in Testing mode, add every demonstration
+account under **Test users**. Keep both provider flags false in committed
+files. In the deployment PowerShell session, enable only Google and inject the
+Web client ID and secret as process-only Terraform variables:
+
+```powershell
+$env:TF_VAR_enable_google_provider = "true"
+$env:TF_VAR_enable_microsoft_provider = "false"
+$env:TF_VAR_google_client_id = "<GOOGLE_OAUTH_WEB_CLIENT_ID>"
+$secureGoogleSecret = Read-Host "Google OAuth client secret" -AsSecureString
+$secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureGoogleSecret)
+try {
+  $env:TF_VAR_google_client_secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
+}
+```
+
+Set the deployed frontend URLs in `infra/aws/terraform.tfvars`, then run the
+preflight and an intentionally narrow Terraform change. Pinning the currently
+deployed Worker image prevents an unrelated image value in `terraform.tfvars`
+from entering this authentication-only deployment:
+
+```powershell
+.\scripts\google-auth-preflight.ps1 -CognitoDomainPrefix <COGNITO_DOMAIN_PREFIX> -AwsRegion ap-southeast-2
+$currentWorkerImage = aws lambda get-function --function-name pacific-bioarchive-development-media-worker --query "Code.ImageUri" --output text
+cd infra\aws
+terraform init
+terraform plan -input=false -lock=true -var-file=terraform.tfvars "-var=worker_image_uri=$currentWorkerImage" '-target=aws_cognito_identity_provider.google[0]' '-target=aws_cognito_user_pool_client.web' '-target=aws_lambda_function.api'
+terraform apply -input=true -lock=true -var-file=terraform.tfvars "-var=worker_image_uri=$currentWorkerImage" '-target=aws_cognito_identity_provider.google[0]' '-target=aws_cognito_user_pool_client.web' '-target=aws_lambda_function.api'
+```
+
+Stop if the plan is not exactly one Google provider creation plus updates to
+the Cognito web client and API Lambda, with no destroy. Do not save or share a
+plan that contains the OAuth secret.
+
+To satisfy rubric 3.4, complete a real **Continue with Google** login (including
+any MFA challenge enforced by Google) and confirm that the UI reaches the
+protected Library. Then verify Cognito configuration and the resulting
+`EXTERNAL_PROVIDER` user record without printing user attributes or tokens:
+
+```powershell
+cd ..\..
+python scripts\check_external_provider.py --user-pool-id <USER_POOL_ID> --app-client-id <APP_CLIENT_ID> --provider Google --require-user --region ap-southeast-2
+```
+
+Clear the process secret when deployment is finished:
+
+```powershell
+Remove-Item Env:TF_VAR_google_client_secret -ErrorAction SilentlyContinue
+```
+
+The Google button is intentionally hidden until the deployed `/auth/config`
+advertises the provider. Microsoft remains available in Terraform as an
+optional provider, but stays disabled for this deployment.
+
 After the first infrastructure apply, re-run the Azure stack whenever the
 Cosmos container definitions change. The cloud API expects the `media`,
 `subscriptions`, `delivery-ledger`, and `deletion-operations` containers. Then

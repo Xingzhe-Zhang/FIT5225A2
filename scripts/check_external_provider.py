@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from typing import Any
 
 
@@ -19,9 +20,15 @@ def check_provider(
     provider: str,
     require_user: bool,
 ) -> dict[str, object]:
-    identity_provider = client.describe_identity_provider(
-        UserPoolId=user_pool_id, ProviderName=provider
-    )["IdentityProvider"]
+    try:
+        identity_provider = client.describe_identity_provider(
+            UserPoolId=user_pool_id, ProviderName=provider
+        )["IdentityProvider"]
+    except client.exceptions.ResourceNotFoundException as exc:
+        raise RuntimeError(
+            f"Cognito identity provider {provider} is not deployed in user pool "
+            f"{user_pool_id}. Run and approve the reviewed Terraform apply first."
+        ) from exc
     app_client = client.describe_user_pool_client(
         UserPoolId=user_pool_id, ClientId=app_client_id
     )["UserPoolClient"]
@@ -78,13 +85,17 @@ def main() -> int:
     import boto3
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    summary = check_provider(
-        session.client("cognito-idp"),
-        user_pool_id=args.user_pool_id,
-        app_client_id=args.app_client_id,
-        provider=args.provider,
-        require_user=args.require_user,
-    )
+    try:
+        summary = check_provider(
+            session.client("cognito-idp"),
+            user_pool_id=args.user_pool_id,
+            app_client_id=args.app_client_id,
+            provider=args.provider,
+            require_user=args.require_user,
+        )
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     print(json.dumps(summary, indent=2))
     return 0
 
