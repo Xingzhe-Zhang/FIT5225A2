@@ -1,0 +1,9 @@
+# Azure Functions deployment dependencies. Local development uses pyproject.toml.
+azure-cosmos==4.9.0
+azure-functions==1.24.0
+azure-identity==1.25.0
+fastapi==0.115.12
+httpx==0.28.1
+PyJWT[crypto]==2.10.1
+pydantic==2.10.6
+pydantic-settings==2.7.1

@@ -1,0 +1,1 @@
+"""AWS-facing FastAPI adapter."""

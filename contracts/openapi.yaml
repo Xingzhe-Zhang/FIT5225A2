@@ -1,0 +1,350 @@
+openapi: 3.1.0
+info:
+  title: Pacific BioArchive API
+  version: 1.0.0
+  description: Contract-first API shared by the AWS entry point and Azure data service.
+servers:
+  - url: http://localhost:8000
+    description: Local AWS-side API
+tags:
+  - name: system
+  - name: uploads
+  - name: queries
+  - name: management
+  - name: notifications
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service is available.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+  /auth/config:
+    get:
+      tags: [system]
+      operationId: getPublicAuthConfig
+      security: []
+      responses:
+        "200":
+          description: Non-secret Cognito browser configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [region, user_pool_id, app_client_id, oauth_domain, redirect_uri, external_providers]
+                properties:
+                  region: {type: string}
+                  user_pool_id: {type: string}
+                  app_client_id: {type: string}
+                  oauth_domain: {type: string}
+                  redirect_uri: {type: string, format: uri}
+                  external_providers:
+                    type: array
+                    uniqueItems: true
+                    items: {type: string, enum: [Google, Microsoft]}
+  /uploads/reservations:
+    post:
+      tags: [uploads]
+      operationId: reserveUpload
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/upload-reservation-request.schema.json"}
+      responses:
+        "200":
+          description: Existing duplicate or new upload reservation.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/upload-reservation-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /queries/tags:
+    post:
+      tags: [queries]
+      operationId: queryByTagCounts
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/tag-query.schema.json"}
+      responses:
+        "200": {$ref: "#/components/responses/QueryResults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /queries/species:
+    post:
+      tags: [queries]
+      operationId: queryBySpecies
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/species-query.schema.json"}
+      responses:
+        "200": {$ref: "#/components/responses/QueryResults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /queries/thumbnail:
+    post:
+      tags: [queries]
+      operationId: queryByThumbnailUrl
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/thumbnail-query.schema.json"}
+      responses:
+        "200": {$ref: "#/components/responses/QueryResults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /queries/by-file:
+    post:
+      tags: [queries]
+      operationId: queryByTemporaryFile
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "200": {$ref: "#/components/responses/QueryResults"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /media/tags:
+    post:
+      tags: [management]
+      operationId: updateMediaTags
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/bulk-tag-operation.schema.json"}
+      responses:
+        "200":
+          description: Per-media update outcomes.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/tag-update-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /media:
+    get:
+      tags: [media]
+      operationId: listMedia
+      security: [{CognitoBearer: []}]
+      responses:
+        "200":
+          description: Media belonging to the authenticated user.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/query-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    delete:
+      tags: [management]
+      operationId: deleteMedia
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/delete-request.schema.json"}
+      responses:
+        "200":
+          description: Per-media deletion outcomes.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/delete-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /uploads/reservations/{media_id}:
+    delete:
+      tags: [uploads]
+      operationId: cancelUploadReservation
+      security: [{CognitoBearer: []}]
+      parameters:
+        - name: media_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/upload-reservation-cancel-request.schema.json"}
+      responses:
+        "200":
+          description: Idempotent cancellation outcome.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/upload-reservation-cancel-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /media/{media_id}:
+    delete:
+      tags: [management]
+      operationId: deleteMediaById
+      security: [{CognitoBearer: []}]
+      parameters:
+        - name: media_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Owner-scoped deletion outcome.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/delete-single-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /subscriptions:
+    get:
+      tags: [notifications]
+      operationId: listSubscriptions
+      security: [{CognitoBearer: []}]
+      responses:
+        "200":
+          description: Subscriptions belonging to the authenticated user.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/subscription-list-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+    post:
+      tags: [notifications]
+      operationId: createSubscription
+      security: [{CognitoBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/subscription.schema.json"}
+      responses:
+        "201":
+          description: Created subscription.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/subscription-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /subscriptions/{subscription_id}:
+    put:
+      tags: [notifications]
+      operationId: updateSubscription
+      security: [{CognitoBearer: []}]
+      parameters:
+        - name: subscription_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "./schemas/subscription-update.schema.json"}
+      responses:
+        "200":
+          description: Updated subscription.
+          content:
+            application/json:
+              schema: {$ref: "./schemas/subscription-response.schema.json"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+    delete:
+      tags: [notifications]
+      operationId: deleteSubscription
+      security: [{CognitoBearer: []}]
+      parameters:
+        - name: subscription_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204": {description: Subscription deleted.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+components:
+  securitySchemes:
+    CognitoBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: AWS Cognito access token.
+  schemas:
+    ErrorResponse: {$ref: "./schemas/error-response.schema.json"}
+    QueryResponse: {$ref: "./schemas/query-response.schema.json"}
+    HttpValidationError:
+      type: object
+      additionalProperties: false
+      required: [detail]
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            required: [loc, msg, type]
+            properties:
+              loc:
+                type: array
+                items:
+                  oneOf:
+                    - {type: string}
+                    - {type: integer}
+              msg: {type: string}
+              type: {type: string}
+              input: {}
+  responses:
+    Unauthorized:
+      description: Missing or invalid Cognito access token.
+      content:
+        application/json:
+          schema: {$ref: "./schemas/error-response.schema.json"}
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - {$ref: "./schemas/error-response.schema.json"}
+              - {$ref: "#/components/schemas/HttpValidationError"}
+    NotFound:
+      description: The authenticated owner does not have the requested resource.
+      content:
+        application/json:
+          schema: {$ref: "./schemas/error-response.schema.json"}
+    Conflict:
+      description: The supplied resource version is stale.
+      content:
+        application/json:
+          schema: {$ref: "./schemas/error-response.schema.json"}
+    QueryResults:
+      description: Matching media with short-lived HTTPS URLs.
+      content:
+        application/json:
+          schema: {$ref: "./schemas/query-response.schema.json"}

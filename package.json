@@ -1,0 +1,10 @@
+{
+  "name": "pacific-bioarchive-system",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:test": "npm --prefix frontend test",
+    "frontend:build": "npm --prefix frontend run build"
+  }
+}
