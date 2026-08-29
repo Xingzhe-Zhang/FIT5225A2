@@ -1,0 +1,12 @@
+azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+project_name           = "pacific-bioarchive"
+environment            = "development"
+azure_location         = "australiaeast"
+unique_suffix          = "replace1"
+frontend_origins       = ["http://localhost:5173"]
+cognito_issuer         = "https://cognito-idp.ap-southeast-2.amazonaws.com/replace-pool-id"
+cognito_app_client_id  = "replace-client-id"
+aws_media_bucket       = "replace-media-bucket"
+# worker_principal_id  = "replace-service-principal-object-id"
+# api_principal_id          = "replace-api-service-principal-object-id"
+# notification_principal_id = "replace-notification-service-principal-object-id"
