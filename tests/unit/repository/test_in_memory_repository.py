@@ -53,6 +53,7 @@ def test_tag_query_matches_model_species_names_case_insensitively() -> None:
     repository.upsert(matching)
 
     assert repository.query_by_tags("owner-a", {"bos_taurus": 2}) == [matching]
+    assert repository.query_by_tags("owner-a", {"Bos taurus": 2}) == [matching]
 
 
 def test_tag_query_matches_manual_tags_as_single_occurrences() -> None:
@@ -73,6 +74,17 @@ def test_species_query_includes_automatic_and_manual_tags_case_insensitively() -
         repository.upsert(item)
 
     assert repository.query_by_species("owner-a", "DINGO") == [automatic, manual]
+
+
+def test_species_query_treats_spaces_and_underscores_as_equivalent() -> None:
+    repository = InMemoryPagedMediaRepository()
+    automatic = record(1, counts={"Alectura_lathami": 1})
+    manual = record(2, manual=["Casuarius casuarius"])
+    for item in (automatic, manual):
+        repository.upsert(item)
+
+    assert repository.query_by_species("owner-a", "Alectura lathami") == [automatic]
+    assert repository.query_by_species("owner-a", "Casuarius_casuarius") == [manual]
 
 
 def test_paged_queries_return_stable_non_overlapping_pages() -> None:

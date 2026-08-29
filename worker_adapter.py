@@ -44,6 +44,7 @@ from backend.tagging.inference.manifest import (
     load_configured_bundle,
 )
 from backend.tagging.inference.local_runtime import LocalWildlifeInferenceService
+from backend.tagging.worker.errors import PermanentTaggingError
 from backend.tagging.worker.service import TaggingWorker
 
 
@@ -303,6 +304,11 @@ def handler(event, context):
                 key = unquote_plus(record["s3"]["object"]["key"])
                 content_type = s3.head_object(Bucket=os.environ["MEDIA_BUCKET"], Key=key)["ContentType"]
                 (video if content_type.startswith("video/") else image).handle(body)
+        except PermanentTaggingError:
+            # Permanent validation failures and stale events have either
+            # already persisted a terminal media state or refer to a record
+            # the user deleted. Acknowledge them instead of retrying to DLQ.
+            continue
         except Exception:
             failures.append({"itemIdentifier": message.get("messageId", "unknown")})
     return {"batchItemFailures": failures}

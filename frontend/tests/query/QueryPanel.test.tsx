@@ -75,6 +75,42 @@ test("switches between species and thumbnail query payloads", async () => {
   );
 });
 
+test("rejects an original media URL before running a thumbnail query", async () => {
+  const search = vi.fn().mockResolvedValue({ results: [] });
+  renderPanel(search);
+
+  fireEvent.click(screen.getByRole("radio", { name: "Thumbnail URL" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Thumbnail URL" }), {
+    target: { value: "https://media.example.test/originals/1/camera.jpg" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("/derived/");
+  expect(search).not.toHaveBeenCalled();
+});
+
+test("treats spaces and underscores as equivalent species separators", async () => {
+  const search = vi.fn().mockResolvedValue({ results: [] });
+  renderPanel(search);
+
+  fireEvent.change(screen.getByLabelText("Species 1"), { target: { value: "Alectura lathami" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await waitFor(() => expect(search).toHaveBeenCalledWith(
+    "tags",
+    { alectura_lathami: 1 },
+    "access-token",
+  ));
+
+  fireEvent.click(screen.getByRole("radio", { name: "Species" }));
+  fireEvent.change(screen.getByLabelText("Species name"), { target: { value: "Casuarius casuarius" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+  await waitFor(() => expect(search).toHaveBeenCalledWith(
+    "species",
+    { species: "Casuarius_casuarius" },
+    "access-token",
+  ));
+});
+
 test("renders image previews, video links, and request errors", async () => {
   const response: QueryResponse = {
     results: [
@@ -113,7 +149,11 @@ test("renders image previews, video links, and request errors", async () => {
     "href",
     response.results[0].original_url,
   );
-  expect(screen.getAllByRole("link", { name: "View original" }).some((link) =>
+  expect(screen.getByRole("link", { name: "Open thumbnail URL" })).toHaveAttribute(
+    "href",
+    response.results[0].thumbnail_url,
+  );
+  expect(screen.getAllByRole("link", { name: "View" }).some((link) =>
     link.getAttribute("href") === response.results[1].original_url,
   )).toBe(true);
   expect(screen.getByRole("status")).toHaveTextContent("2 matches");
@@ -162,4 +202,27 @@ test("uses the original as a processing thumbnail and renders a consistent faile
   expect(screen.getByText("Species detection failed.")).toBeInTheDocument();
   expect(screen.getByText("TAGGING_INPUT_INVALID")).toBeInTheDocument();
   expect(screen.getByText("View technical details")).toBeInTheDocument();
+});
+
+test("paginates query results and resets to page one when media type changes", async () => {
+  const results: QueryResponse["results"] = Array.from({ length: 11 }, (_, index) => ({
+    media_id: `query-${index}`,
+    media_type: index === 10 ? "video" : "image",
+    status: "ready",
+    original_url: `https://signed.example.test/query-${index}.${index === 10 ? "mp4" : "jpg"}`,
+    thumbnail_url: null,
+    tag_counts: {},
+  }));
+  renderPanel(vi.fn().mockResolvedValue({ results }));
+  fireEvent.change(screen.getByLabelText("Species 1"), { target: { value: "dingo" } });
+  fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+  expect(await screen.findByText("1–10 of 11")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  expect(await screen.findByText("11–11 of 11")).toBeInTheDocument();
+  expect(screen.getByText("query-10.mp4")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Videos 1" }));
+  expect(await screen.findByText("1–1 of 1")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
 });

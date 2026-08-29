@@ -59,6 +59,20 @@ class AzureDataApiClient:
             raise MediaNotFoundError("thumbnail was not found for the authenticated owner")
         if response.status_code in {401, 403}:
             raise ApiError("AUTH_TOKEN_INVALID", "Azure data API rejected the access token", 401)
+        if 400 <= response.status_code < 500:
+            try:
+                detail = response.json().get("error", {})
+                code = detail.get("code")
+                message = detail.get("message")
+            except (AttributeError, ValueError):
+                code = message = None
+            if isinstance(code, str) and isinstance(message, str):
+                raise ApiError(code, message, response.status_code)
+            raise ApiError(
+                "AZURE_DATA_REQUEST_REJECTED",
+                "Azure data API rejected the query",
+                response.status_code,
+            )
         if not response.is_success:
             raise ApiError("AZURE_DATA_UNAVAILABLE", "Azure data API request failed", 502)
         return response

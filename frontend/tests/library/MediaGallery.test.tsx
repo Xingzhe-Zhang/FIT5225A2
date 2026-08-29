@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { AuthContext, type AuthContextValue } from "../../src/auth/AuthContext";
@@ -91,9 +91,10 @@ test("renders consistent previews, filenames, readable species and status filter
 test("keeps failed details collapsed and uses a calm summary with the error code", async () => {
   const failed: MediaResult = {
     media_id: "failed-1",
+    file_name: "failed-field-image.jpg",
     media_type: "image",
     status: "failed",
-    original_url: "https://downloads.example.test/originals/failed.jpg",
+    original_url: null,
     thumbnail_url: null,
     tag_counts: {},
     failure_code: "TAGGING_INPUT_INVALID",
@@ -104,7 +105,8 @@ test("keeps failed details collapsed and uses a calm summary with the error code
   });
   renderGallery(client([failed], { deleteMediaById }));
 
-  expect(await screen.findByAltText("failed.jpg thumbnail")).toHaveAttribute("src", failed.original_url);
+  expect(await screen.findByText("failed-field-image.jpg")).toBeInTheDocument();
+  expect(screen.getByLabelText("Preview unavailable failed-1")).toBeInTheDocument();
   expect(screen.getByText("Species detection failed.")).toBeInTheDocument();
   expect(screen.getByText("TAGGING_INPUT_INVALID")).toBeInTheDocument();
   const details = screen.getByText("View technical details").closest("details");
@@ -147,7 +149,7 @@ test("supports bulk tag editing and deletion with per-item outcomes", async () =
   renderGallery(client([first, second], { updateTags, deleteMedia }));
 
   await screen.findByText("first.jpg");
-  fireEvent.click(screen.getByRole("button", { name: "Select visible" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all visible media" }));
   expect(screen.getByText("2 selected")).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "Night, field_note" } });
   fireEvent.click(screen.getByRole("button", { name: "Add tags" }));
@@ -166,7 +168,11 @@ test("supports bulk tag editing and deletion with per-item outcomes", async () =
 });
 
 test("keeps polling while media is prepared", async () => {
-  const interval = vi.spyOn(window, "setInterval");
+  let poll: (() => void) | undefined;
+  const interval = vi.spyOn(window, "setInterval").mockImplementation((handler) => {
+    poll = handler as () => void;
+    return 123;
+  });
   const prepared: MediaResult = {
     media_id: "prepared-1",
     media_type: "image",
@@ -175,10 +181,15 @@ test("keeps polling while media is prepared", async () => {
     thumbnail_url: "https://downloads.example.test/prepared-thumb.jpg",
     tag_counts: {},
   };
-  renderGallery(client([prepared]));
+  const list = vi.fn()
+    .mockResolvedValueOnce({ results: [prepared] })
+    .mockImplementationOnce(() => new Promise(() => undefined));
+  renderGallery(client([prepared], { list }));
 
   await screen.findByText("prepared.jpg");
   expect(interval).toHaveBeenCalled();
+  act(() => poll?.());
+  expect(screen.queryByText("Updating library…")).not.toBeInTheDocument();
   interval.mockRestore();
 });
 
@@ -201,4 +212,30 @@ test("removes a card only after the single-delete outcome is deleted", async () 
 
   await waitFor(() => expect(screen.queryByText("ready.jpg")).not.toBeInTheDocument());
   expect(screen.getByRole("status")).toHaveTextContent("Media deleted.");
+});
+
+test("paginates ten rows, truncates manual tags, and resets pagination after filtering", async () => {
+  const results: MediaResult[] = Array.from({ length: 12 }, (_, index) => ({
+    media_id: `media-${index}`,
+    media_type: index === 11 ? "video" : "image",
+    status: "ready",
+    original_url: `https://downloads.example.test/originals/file-${index}.${index === 11 ? "mp4" : "jpg"}`,
+    thumbnail_url: null,
+    tag_counts: {},
+    manual_tags: index === 0 ? ["one", "two", "three", "four", "five"] : [],
+  }));
+  renderGallery(client(results));
+
+  expect(await screen.findByText("1–10 of 12")).toBeInTheDocument();
+  expect(screen.getByText("+2 more")).toBeInTheDocument();
+  expect(screen.queryByText("file-10.jpg")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  expect(await screen.findByText("11–12 of 12")).toBeInTheDocument();
+  expect(screen.getByText("file-10.jpg")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Videos 1" }));
+  expect(await screen.findByText("1–1 of 1")).toBeInTheDocument();
+  expect(screen.getByText("file-11.mp4")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
 });

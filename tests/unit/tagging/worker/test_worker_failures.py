@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from urllib.parse import unquote
 from uuid import UUID
 
 import pytest
 
-from backend.common.contracts.models import MediaPreparedEvent
+from backend.common.contracts.models import MediaPreparedEvent, MediaRecord
 from backend.common.providers.fakes import (
     DeterministicInferenceService,
     FixedClock,
@@ -55,6 +56,24 @@ def make_worker(*, storage, inference, repository, publisher):
     )
 
 
+def seed_prepared(repository, event: MediaPreparedEvent) -> None:
+    repository.upsert(MediaRecord(
+        media_id=event.media_id,
+        owner_sub=event.owner_sub,
+        sha256=event.sha256,
+        file_name=unquote(str(event.original_storage_uri).rsplit("/", 1)[-1]),
+        media_type=event.media_type,
+        original_storage_uri=event.original_storage_uri,
+        thumbnail_storage_uri=event.thumbnail_storage_uri,
+        tag_counts={},
+        manual_tags=[],
+        model_version="pending",
+        status="prepared",
+        created_at=event.occurred_at,
+        updated_at=event.occurred_at,
+    ))
+
+
 def test_schema_invalid_delivery_is_permanent_without_partial_record() -> None:
     repository = InMemoryMediaRepository()
     publisher = RecordingEventPublisher()
@@ -76,6 +95,7 @@ def test_schema_invalid_delivery_is_permanent_without_partial_record() -> None:
 def test_video_without_prepared_frames_records_permanent_failure() -> None:
     event = prepared_event(media_type="video", frames=[])
     repository = InMemoryMediaRepository()
+    seed_prepared(repository, event)
     publisher = RecordingEventPublisher()
     worker = make_worker(
         storage=InMemoryObjectStorage(),
@@ -105,6 +125,7 @@ def test_missing_prepared_object_is_transient_and_retry_can_complete() -> None:
     original_uri = str(event.original_storage_uri)
     storage = InMemoryObjectStorage()
     repository = InMemoryMediaRepository()
+    seed_prepared(repository, event)
     publisher = RecordingEventPublisher()
     worker = make_worker(
         storage=storage,
@@ -125,7 +146,7 @@ def test_missing_prepared_object_is_transient_and_retry_can_complete() -> None:
 
     assert captured.value.retry_classification is RetryClassification.TRANSIENT
     assert captured.value.record is None
-    assert repository.get("owner-123", MEDIA_ID) is None
+    assert repository.get("owner-123", MEDIA_ID).status == "prepared"
     assert publisher.events == []
 
     storage.put_bytes("originals/a/camera.jpg", b"image", content_type="image/jpeg")
@@ -171,6 +192,8 @@ def test_transient_publish_retry_reuses_ready_record_and_same_completion_event()
     storage = InMemoryObjectStorage()
     storage.put_bytes("originals/a/camera.jpg", b"image", content_type="image/jpeg")
     repository = CountingRepository()
+    seed_prepared(repository, event)
+    repository.upserts = 0
     inference = CountingInference(
         {(uri,): InferenceResult(tag_counts={"dingo": 1}, model_version="1.0.0")}
     )
@@ -198,3 +221,24 @@ def test_transient_publish_retry_reuses_ready_record_and_same_completion_event()
     assert repository.upserts == 1
     assert publisher.attempts == 2
     assert publisher.events == [retry.completed_event]
+
+
+def test_stale_event_after_media_deletion_does_not_recreate_failed_record() -> None:
+    event = prepared_event()
+    storage = InMemoryObjectStorage()
+    storage.put_bytes("originals/a/camera.jpg", b"image", content_type="image/jpeg")
+    repository = InMemoryMediaRepository()
+    publisher = RecordingEventPublisher()
+    worker = make_worker(
+        storage=storage,
+        inference=DeterministicInferenceService({}),
+        repository=repository,
+        publisher=publisher,
+    )
+
+    with pytest.raises(PermanentTaggingError, match="stale prepared event") as captured:
+        worker.process(event)
+
+    assert captured.value.record is None
+    assert repository.get("owner-123", MEDIA_ID) is None
+    assert publisher.events == []

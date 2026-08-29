@@ -6,6 +6,7 @@ from uuid import UUID
 
 from backend.common.contracts.models import MediaRecord
 from backend.common.providers.interfaces import ReservationResult
+from backend.common.species_names import canonical_species_name
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +94,7 @@ class InMemoryPagedMediaRepository:
         owner_sub: str,
         minimum_counts: dict[str, int],
     ) -> list[MediaRecord]:
-        normalized_required = {tag.casefold(): count for tag, count in minimum_counts.items()}
+        normalized_required = {canonical_species_name(tag): count for tag, count in minimum_counts.items()}
         return [
             record
             for record in self._owned(owner_sub)
@@ -101,12 +102,12 @@ class InMemoryPagedMediaRepository:
         ]
 
     def query_by_species(self, owner_sub: str, species: str) -> list[MediaRecord]:
-        normalized = species.casefold()
+        normalized = canonical_species_name(species)
         return [
             record
             for record in self._owned(owner_sub)
-            if any(tag.casefold() == normalized for tag in record.tag_counts)
-            or any(tag.casefold() == normalized for tag in record.manual_tags)
+            if any(canonical_species_name(tag) == normalized for tag in record.tag_counts)
+            or any(canonical_species_name(tag) == normalized for tag in record.manual_tags)
         ]
 
     def query_tags_page(
@@ -170,8 +171,8 @@ class InMemoryPagedMediaRepository:
 
 
 def _meets_minimum_counts(record: MediaRecord, required: dict[str, int]) -> bool:
-    available = {tag.casefold(): count for tag, count in record.tag_counts.items()}
+    available = {canonical_species_name(tag): count for tag, count in record.tag_counts.items()}
     # Manual tags are presence-only, so they contribute one match.
     for tag in record.manual_tags:
-        available.setdefault(tag.casefold(), 1)
+        available.setdefault(canonical_species_name(tag), 1)
     return all(available.get(tag, 0) >= count for tag, count in required.items())

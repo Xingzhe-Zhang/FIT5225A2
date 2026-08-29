@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../auth/AuthContext";
 import { PlatformClient } from "../api/platformClient";
-import { MediaGallery, type LocalMediaPreview, type MediaResult } from "../library/MediaGallery";
+import { MediaGallery, type LocalMediaPreview } from "../library/MediaGallery";
 import { ManagementPanel } from "../manage/ManagementPanel";
 import { QueryPanel } from "../query/QueryPanel";
 import { SubscriptionPanel } from "../subscriptions/SubscriptionPanel";
 import { UploadPanel } from "../upload/UploadPanel";
+import { Icon } from "../ui/Icon";
 
 const platformClient = new PlatformClient();
 const uploadClient = {
@@ -23,7 +24,6 @@ const mediaClient = {
 export function LibraryPage() {
   const auth = useAuth();
   const [libraryVersion, setLibraryVersion] = useState(0);
-  const [libraryItems, setLibraryItems] = useState<MediaResult[]>([]);
   const [localPreviews, setLocalPreviews] = useState<Record<string, LocalMediaPreview>>({});
   const previewUrls = useRef<Set<string>>(new Set());
 
@@ -61,7 +61,7 @@ export function LibraryPage() {
         </a>
         <div className="header-actions">
           <span className="connection-status"><i aria-hidden="true" /> Secure session</span>
-          <button type="button" className="button button-quiet" onClick={auth.logout}>Sign out</button>
+          <button type="button" className="button button-quiet icon-label" onClick={auth.logout}><Icon name="logout" />Sign out</button>
         </div>
       </header>
       <main id="top" className="library-shell">
@@ -79,11 +79,11 @@ export function LibraryPage() {
         </section>
 
         <nav className="section-nav" aria-label="Application sections">
-          <a href="#upload"><span>01</span> Upload</a>
-          <a href="#library"><span>02</span> Library</a>
-          <a href="#search"><span>03</span> Search</a>
-          <a href="#manage"><span>04</span> Manage</a>
-          <a href="#subscriptions"><span>05</span> Subscriptions</a>
+          <a href="#upload"><Icon name="upload" /><span>01</span> Upload</a>
+          <a href="#library"><Icon name="library" /><span>02</span> Library</a>
+          <a href="#search"><Icon name="search" /><span>03</span> Search</a>
+          <a href="#manage"><Icon name="manage" /><span>04</span> Manage</a>
+          <a href="#subscriptions"><Icon name="bell" /><span>05</span> Subscriptions</a>
         </nav>
 
         <div className="workspace-grid">
@@ -103,13 +103,13 @@ export function LibraryPage() {
             </ol>
           </aside>
           <section id="library" className="workspace-card workspace-card-wide">
-            <MediaGallery client={mediaClient} refreshVersion={libraryVersion} localPreviews={localPreviews} onResultsChange={setLibraryItems} />
+            <MediaGallery client={mediaClient} refreshVersion={libraryVersion} localPreviews={localPreviews} />
           </section>
           <section id="search" className="workspace-card workspace-card-wide">
             <QueryPanel client={platformClient} />
           </section>
           <section id="manage" className="workspace-card">
-            <ManagementPanel client={platformClient} libraryItems={libraryItems} onLibraryChanged={refreshLibrary} />
+            <ManagementPanel client={platformClient} onLibraryChanged={refreshLibrary} />
           </section>
           <section id="subscriptions" className="workspace-card">
             <SubscriptionPanel client={platformClient} />

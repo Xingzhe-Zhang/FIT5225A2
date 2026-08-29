@@ -27,7 +27,7 @@ export function MediaThumbnail({
   }
 
   if (media.media_type === "video" && (media.thumbnail_url || videoSource)) {
-    return (
+    const video = (
       <video
         className="media-thumbnail media-video-thumbnail"
         aria-label={`${name} preview`}
@@ -37,6 +37,11 @@ export function MediaThumbnail({
         preload="metadata"
       />
     );
+    return media.original_url ? (
+      <a href={media.original_url} target="_blank" rel="noreferrer" aria-label={`View original ${name}`}>
+        {video}
+      </a>
+    ) : video;
   }
 
   return (

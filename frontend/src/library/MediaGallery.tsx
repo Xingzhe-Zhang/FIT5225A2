@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { BulkDeleteResponse, SingleDeleteResponse, TagUpdateResponse } from "../api/mediaTypes";
 import { useAuth } from "../auth/AuthContext";
-import { MediaThumbnail } from "./MediaThumbnail";
+import { Icon } from "../ui/Icon";
+import { MediaTable, mediaFileName } from "./MediaTable";
 
 export interface MediaResult {
   media_id: string;
+  file_name?: string | null;
   media_type: "image" | "video";
   status: "reserved" | "uploaded" | "processing" | "prepared" | "ready" | "deleting" | "failed";
   original_url: string | null;
@@ -35,47 +37,6 @@ const PROCESSING_STATUSES = new Set<MediaResult["status"]>([
   "reserved", "uploaded", "processing", "prepared", "deleting",
 ]);
 
-function displaySpecies(value: string): string {
-  return value.replaceAll("_", " ");
-}
-
-function fileName(media: MediaResult, localPreview?: LocalMediaPreview): string {
-  if (localPreview?.file_name) return localPreview.file_name;
-  if (media.original_url) {
-    try {
-      const path = new URL(media.original_url).pathname;
-      const name = decodeURIComponent(path.split("/").at(-1) ?? "");
-      if (name) return name;
-    } catch {
-      // A malformed signed URL should not prevent the rest of the card rendering.
-    }
-  }
-  return `${media.media_type === "image" ? "Image" : "Video"} ${media.media_id.slice(0, 8)}`;
-}
-
-function statusLabel(status: MediaResult["status"]): string {
-  if (status === "ready") return "Ready";
-  if (status === "failed") return "Failed";
-  if (status === "prepared") return "Detecting species";
-  if (status === "deleting") return "Deleting";
-  return "Processing";
-}
-
-function statusDescription(status: MediaResult["status"]): string {
-  if (status === "ready") return "Analysis complete";
-  if (status === "prepared") return "Detecting species";
-  if (status === "failed") return "Processing failed";
-  if (status === "deleting") return "Deletion in progress";
-  return "Preparing preview";
-}
-
-function failureSummary(code?: string | null): string {
-  if (code?.startsWith("TAGGING_")) return "Species detection failed.";
-  if (code?.startsWith("IMAGE_")) return "Image processing failed.";
-  if (code?.startsWith("VIDEO_")) return "Video processing failed.";
-  return "Media processing failed.";
-}
-
 function matchesStatus(media: MediaResult, filter: StatusFilter): boolean {
   if (filter === "all") return true;
   if (filter === "processing") return PROCESSING_STATUSES.has(media.status);
@@ -100,13 +61,14 @@ export function MediaGallery({
   const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<MediaFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState("");
   const [deleting, setDeleting] = useState<MediaResult | null>(null);
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const pollTimer = useRef<number | undefined>(undefined);
 
-  const loadMedia = useCallback(async () => {
+  const loadMedia = useCallback(async (background = false) => {
     if (!auth.accessToken) {
       setResults(null);
       setLoading(false);
@@ -114,8 +76,8 @@ export function MediaGallery({
       setMessage(null);
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (!background) setLoading(true);
+    if (!background) setError(null);
     try {
       const response = await client.list(auth.accessToken);
       setResults(response.results);
@@ -123,16 +85,16 @@ export function MediaGallery({
       setSelected((current) => new Set([...current].filter((id) => response.results.some((item) => item.media_id === id))));
       const pending = response.results.some((item) => PROCESSING_STATUSES.has(item.status));
       if (pending && pollTimer.current === undefined) {
-        pollTimer.current = window.setInterval(() => void loadMedia(), 5000);
+        pollTimer.current = window.setInterval(() => void loadMedia(true), 5000);
       } else if (!pending && pollTimer.current !== undefined) {
         window.clearInterval(pollTimer.current);
         pollTimer.current = undefined;
       }
     } catch (caught) {
-      setResults(null);
-      setError(caught instanceof Error ? caught.message : "Media library is unavailable.");
+      if (!background) setResults(null);
+      if (!background) setError(caught instanceof Error ? caught.message : "Media library is unavailable.");
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [auth.accessToken, client, onResultsChange]);
 
@@ -143,6 +105,8 @@ export function MediaGallery({
       pollTimer.current = undefined;
     };
   }, [loadMedia, refreshVersion]);
+
+  useEffect(() => setPage(1), [filter, statusFilter]);
 
   const counts = useMemo(() => ({
     all: results?.length ?? 0,
@@ -168,6 +132,14 @@ export function MediaGallery({
       const next = new Set(current);
       if (next.has(mediaId)) next.delete(mediaId);
       else next.add(mediaId);
+      return next;
+    });
+  }
+
+  function togglePage(mediaIds: string[], checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      mediaIds.forEach((id) => checked ? next.add(id) : next.delete(id));
       return next;
     });
   }
@@ -274,7 +246,7 @@ export function MediaGallery({
     <section aria-labelledby="media-gallery-heading">
       <div className="panel-heading panel-heading-row">
         <div><p className="panel-kicker">Observation collection</p><h2 id="media-gallery-heading">Your media library</h2></div>
-        <button type="button" className="button-link refresh-library" onClick={() => void loadMedia()} disabled={loading}>↻ Refresh</button>
+        <button type="button" className="button-link refresh-library icon-label" onClick={() => void loadMedia()} disabled={loading}><Icon name="refresh" />Refresh</button>
       </div>
       <p className="panel-description">Review processing progress, open originals and organise the species evidence found in each file.</p>
       {loading && <p className="inline-loading" role="status">Updating library…</p>}
@@ -299,64 +271,37 @@ export function MediaGallery({
               ))}
             </div>
           </div>
-          <div className="library-selection-toolbar" aria-label="Library selection actions">
-            <div>
-              <strong>{selected.size === 0 ? "Select media to manage" : `${selected.size} selected`}</strong>
-              <button type="button" className="button-link" onClick={() => setSelected(new Set(filtered.map((item) => item.media_id)))}>Select visible</button>
-              {selected.size > 0 && <button type="button" className="button-link" onClick={() => setSelected(new Set())}>Clear</button>}
+          {selected.size > 0 && (
+            <div className="library-bulk-actions" aria-label="Bulk media actions">
+              <strong>{selected.size} selected</strong>
+              <label className="visually-hidden" htmlFor="library-tags">Tags</label>
+              <input id="library-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="Tags: night, field-note" />
+              <button className="icon-label" type="button" disabled={loading || selectedUrls.length === 0} onClick={() => void updateSelectedTags(1)}><Icon name="add" />Add tags</button>
+              <button type="button" className="secondary icon-label" disabled={loading || selectedUrls.length === 0} onClick={() => void updateSelectedTags(0)}><Icon name="remove" />Remove tags</button>
+              <button type="button" className="button-danger-subtle icon-label" disabled={loading} onClick={() => setConfirmingBulkDelete(true)}><Icon name="delete" />Delete selected</button>
+              <button type="button" className="button-link icon-label" onClick={() => setSelected(new Set())}><Icon name="clear" />Clear</button>
             </div>
-            {selected.size > 0 && (
-              <div className="library-bulk-actions">
-                <label htmlFor="library-tags">Tags</label>
-                <input id="library-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="night, field-note" />
-                <button type="button" disabled={loading || selectedUrls.length === 0} onClick={() => void updateSelectedTags(1)}>Add tags</button>
-                <button type="button" className="secondary" disabled={loading || selectedUrls.length === 0} onClick={() => void updateSelectedTags(0)}>Remove tags</button>
-                <button type="button" className="button-danger-subtle" disabled={loading} onClick={() => setConfirmingBulkDelete(true)}>Delete selected</button>
-              </div>
-            )}
-          </div>
+          )}
           {filtered.length === 0 ? <p className="empty-state">No media matches these filters.</p> : (
-            <ul className="media-grid" aria-label="Media library">
-              {filtered.map((media) => {
-                const local = localPreviews[media.media_id];
-                const name = fileName(media, local);
-                return (
-                  <li className={`media-card media-card-${media.status} ${selected.has(media.media_id) ? "selected" : ""}`} key={media.media_id}>
-                    <div className="media-preview">
-                      <MediaThumbnail media={media} name={name} localUrl={local?.url} />
-                      <label className="media-select"><input type="checkbox" checked={selected.has(media.media_id)} onChange={() => toggle(media.media_id)} /><span>Select</span></label>
-                      <span className={`status-chip status-${media.status}`}>{statusLabel(media.status)}</span>
-                    </div>
-                    <div className="media-card-body">
-                      <div className="media-card-title"><strong title={name}>{name}</strong><span>{`ID: ${media.media_id.slice(0, 8)}`}</span></div>
-                      <p className={`media-status-copy media-status-${media.status}`}>{statusDescription(media.status)}</p>
-                      <div className="media-tags">
-                        <div><span className="tag-group-label">Detected species</span>{Object.keys(media.tag_counts).length > 0 ? <div className="tag-list">{Object.entries(media.tag_counts).map(([tag, count]) => <span className="tag-chip" key={`detected-${tag}`}>{`${displaySpecies(tag)} × ${count}`}</span>)}</div> : <span className="tag-empty">None detected yet</span>}</div>
-                        {(media.manual_tags ?? []).length > 0 && <div><span className="tag-group-label">Manual tags</span><div className="tag-list">{(media.manual_tags ?? []).map((tag) => <span className="tag-chip tag-chip-manual" key={`manual-${tag}`}>{displaySpecies(tag)}</span>)}</div></div>}
-                      </div>
-                      {media.status === "failed" && (
-                        <div className="media-failure-summary">
-                          <strong>{failureSummary(media.failure_code)}</strong>
-                          {media.failure_code && <code>{media.failure_code}</code>}
-                          {media.failure_message && <details><summary>View technical details</summary><p>{media.failure_message}</p></details>}
-                        </div>
-                      )}
-                      <div className="media-card-actions">
-                        {media.original_url && <a className="button button-secondary" href={media.original_url} target="_blank" rel="noreferrer">View original</a>}
-                        <button type="button" className="button-danger-subtle" disabled={loading} onClick={() => setDeleting(media)}>Delete</button>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <MediaTable
+              items={filtered}
+              label="Media library"
+              page={page}
+              onPageChange={setPage}
+              selected={selected}
+              onToggle={toggle}
+              onTogglePage={togglePage}
+              onDelete={setDeleting}
+              localPreviews={localPreviews}
+              disabled={loading}
+            />
           )}
         </>
       )}
       {(deleting || confirmingBulkDelete) && (
         <div className="modal-backdrop">
           <div className="dialog" role="dialog" aria-label="Confirm deletion" aria-modal="true">
-            <p>{deleting ? `Delete ${fileName(deleting, localPreviews[deleting.media_id])} from your library?` : `Delete ${selectedResults.length} selected item(s)?`} This cannot be undone.</p>
+            <p>{deleting ? `Delete ${mediaFileName(deleting, localPreviews[deleting.media_id])} from your library?` : `Delete ${selectedResults.length} selected item(s)?`} This cannot be undone.</p>
             <div className="dialog-actions">
               <button className="secondary" type="button" disabled={loading} onClick={() => { setDeleting(null); setConfirmingBulkDelete(false); }}>Cancel</button>
               <button className="button-danger" type="button" disabled={loading} onClick={() => void (deleting ? confirmDelete() : deleteSelected())}>Confirm delete</button>

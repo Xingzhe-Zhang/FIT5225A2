@@ -65,6 +65,14 @@ class TaggingWorker:
                 record=None,
             ) from exc
         existing = self._repository.get(event.owner_sub, event.media_id)
+        if existing is None:
+            # A prepared event can arrive after the user has deleted its media.
+            # Acknowledge that stale event permanently instead of recreating a
+            # failed record from data that no longer exists in object storage.
+            raise PermanentTaggingError(
+                "media record no longer exists; ignoring stale prepared event",
+                record=None,
+            )
         if existing is not None and existing.status == "ready":
             pending = self._pending_events.get(event.event_id)
             if pending is not None:

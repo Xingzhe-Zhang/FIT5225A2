@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { useAuth } from "../auth/AuthContext";
-import { MediaThumbnail } from "../library/MediaThumbnail";
+import { MediaTable } from "../library/MediaTable";
 import type { MediaResult } from "../library/MediaGallery";
+import { Icon } from "../ui/Icon";
 
 export type QueryMode = "tags" | "species" | "thumbnail";
 
 export interface QueryResult {
   media_id: string;
+  file_name?: string | null;
   media_type: "image" | "video";
   status: MediaResult["status"];
   original_url: string | null;
@@ -35,44 +37,21 @@ interface TagRow {
   count: string;
 }
 
-function displaySpecies(value: string): string {
-  return value.replaceAll("_", " ");
+function querySpeciesName(value: string): string {
+  return value.trim().replace(/[\s_]+/g, "_");
 }
 
-function resultName(result: QueryResult): string {
-  if (result.original_url) {
-    try {
-      const path = new URL(result.original_url).pathname;
-      const name = decodeURIComponent(path.split("/").at(-1) ?? "");
-      if (name) return name;
-    } catch {
-      // Keep the query results usable if a malformed signed URL is returned.
+function validateThumbnailUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return "Use an HTTPS thumbnail URL.";
+    if (!url.pathname.startsWith("/derived/")) {
+      return "Paste a thumbnail URL containing /derived/. A URL containing /originals/ is the original media, not its thumbnail.";
     }
+    return null;
+  } catch {
+    return "Enter a valid thumbnail URL.";
   }
-  return `${result.media_type === "image" ? "Image" : "Video"} ${result.media_id.slice(0, 8)}`;
-}
-
-function statusLabel(status: QueryResult["status"]): string {
-  if (status === "ready") return "Ready";
-  if (status === "failed") return "Failed";
-  if (status === "prepared") return "Detecting species";
-  if (status === "deleting") return "Deleting";
-  return "Processing";
-}
-
-function statusDescription(status: QueryResult["status"]): string {
-  if (status === "ready") return "Analysis complete";
-  if (status === "prepared") return "Detecting species";
-  if (status === "failed") return "Processing failed";
-  if (status === "deleting") return "Deletion in progress";
-  return "Preparing preview";
-}
-
-function failureSummary(code?: string | null): string {
-  if (code?.startsWith("TAGGING_")) return "Species detection failed.";
-  if (code?.startsWith("IMAGE_")) return "Image processing failed.";
-  if (code?.startsWith("VIDEO_")) return "Video processing failed.";
-  return "Media processing failed.";
 }
 
 export function QueryPanel({ client }: { client: QueryClient }) {
@@ -84,6 +63,21 @@ export function QueryPanel({ client }: { client: QueryClient }) {
   const [results, setResults] = useState<QueryResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<"all" | "image" | "video">("all");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const filteredResults = useMemo(
+    () => (results ?? []).filter((item) => filter === "all" || item.media_type === filter),
+    [filter, results],
+  );
+  const counts = useMemo(() => ({
+    all: results?.length ?? 0,
+    image: results?.filter((item) => item.media_type === "image").length ?? 0,
+    video: results?.filter((item) => item.media_type === "video").length ?? 0,
+  }), [results]);
+
+  useEffect(() => setPage(1), [filter]);
 
   function updateRow(index: number, field: keyof TagRow, value: string) {
     setRows((current) =>
@@ -102,7 +96,7 @@ export function QueryPanel({ client }: { client: QueryClient }) {
     if (mode === "tags") {
       payload = Object.fromEntries(
         rows
-          .map((row) => [row.species.trim().toLocaleLowerCase(), Number(row.count)] as const)
+          .map((row) => [querySpeciesName(row.species).toLocaleLowerCase(), Number(row.count)] as const)
           .filter(([tag, count]) => tag.length > 0 && Number.isInteger(count) && count > 0),
       );
       if (Object.keys(payload).length !== rows.length) {
@@ -114,10 +108,15 @@ export function QueryPanel({ client }: { client: QueryClient }) {
         setError("Enter a species name.");
         return;
       }
-      payload = { species: species.trim() };
+      payload = { species: querySpeciesName(species) };
     } else {
       if (!thumbnailUrl.trim()) {
         setError("Enter a thumbnail URL.");
+        return;
+      }
+      const thumbnailError = validateThumbnailUrl(thumbnailUrl.trim());
+      if (thumbnailError) {
+        setError(thumbnailError);
         return;
       }
       payload = { thumbnail_url: thumbnailUrl.trim() };
@@ -128,12 +127,31 @@ export function QueryPanel({ client }: { client: QueryClient }) {
     try {
       const response = await client.search(mode, payload, auth.accessToken);
       setResults(response.results);
+      setSelected(new Set());
+      setPage(1);
     } catch (caught) {
       setResults(null);
       setError(caught instanceof Error ? caught.message : "Query failed.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function toggle(mediaId: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(mediaId)) next.delete(mediaId);
+      else next.add(mediaId);
+      return next;
+    });
+  }
+
+  function togglePage(mediaIds: string[], checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      mediaIds.forEach((id) => checked ? next.add(id) : next.delete(id));
+      return next;
+    });
   }
 
   return (
@@ -145,7 +163,7 @@ export function QueryPanel({ client }: { client: QueryClient }) {
         </div>
         <span className="panel-number" aria-hidden="true">03</span>
       </div>
-      <p className="panel-description">Combine detected species counts, browse one species, or use an existing thumbnail to find related observations.</p>
+      <p className="panel-description">Combine detected species counts, browse one species, or use a generated thumbnail URL to locate its source observation.</p>
       <form className="query-form" onSubmit={submit}>
         <fieldset className="mode-switcher">
           <legend>Query type</legend>
@@ -165,7 +183,7 @@ export function QueryPanel({ client }: { client: QueryClient }) {
               checked={mode === "thumbnail"}
               onChange={() => setMode("thumbnail")}
             />
-            <span><strong>Thumbnail URL</strong><small>Find related media</small></span>
+            <span><strong>Thumbnail URL</strong><small>Locate its source media</small></span>
           </label>
         </fieldset>
 
@@ -193,14 +211,14 @@ export function QueryPanel({ client }: { client: QueryClient }) {
                   />
                 </label>
                 {rows.length > 1 && (
-                  <button className="secondary" type="button" onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>
-                    Remove tag {index + 1}
+                  <button className="secondary icon-label" type="button" onClick={() => setRows((current) => current.filter((_, i) => i !== index))}>
+                    <Icon name="remove" />Remove tag {index + 1}
                   </button>
                 )}
               </div>
             ))}
-            <button className="secondary add-row-button" type="button" onClick={() => setRows((current) => [...current, { species: "", count: "1" }])}>
-              Add tag
+            <button className="secondary add-row-button icon-label" type="button" onClick={() => setRows((current) => [...current, { species: "", count: "1" }])}>
+              <Icon name="add" />Add tag
             </button>
           </div>
         )}
@@ -221,10 +239,11 @@ export function QueryPanel({ client }: { client: QueryClient }) {
               value={thumbnailUrl}
               onChange={(event) => setThumbnailUrl(event.target.value)}
             />
+            <small className="field-help">Use the HTTPS URL opened by the thumbnail icon in a media table row. Its path contains <code>/derived/</code>, not <code>/originals/</code>.</small>
           </label>
         )}
 
-        <button className="query-submit" type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
+        <button className="query-submit icon-label" type="submit" disabled={loading}><Icon name="search" />{loading ? "Searching…" : "Search"}</button>
       </form>
 
       {error && <p role="alert">{error}</p>}
@@ -232,40 +251,27 @@ export function QueryPanel({ client }: { client: QueryClient }) {
       {results && results.length > 0 && (
         <div className="query-results">
           <p className="result-summary" role="status">{`${results.length} ${results.length === 1 ? "match" : "matches"} found`}</p>
-          <ul className="media-grid" aria-label="Query results">
-            {results.map((result) => {
-              const name = resultName(result);
-              return (
-                <li className={`media-card media-card-${result.status}`} key={result.media_id}>
-                  <div className="media-preview">
-                    <MediaThumbnail media={result} name={name} />
-                    <span className={`status-chip status-${result.status}`}>{statusLabel(result.status)}</span>
-                  </div>
-                  <div className="media-card-body">
-                    <div className="media-card-title"><strong title={name}>{name}</strong><span>{`ID: ${result.media_id.slice(0, 8)}`}</span></div>
-                    <p className={`media-status-copy media-status-${result.status}`}>{statusDescription(result.status)}</p>
-                    <div className="media-tags">
-                      <div>
-                        <span className="tag-group-label">Detected species</span>
-                        {Object.keys(result.tag_counts).length > 0 ? <div className="tag-list">{Object.entries(result.tag_counts).map(([tag, count]) => <span className="tag-chip" key={`detected-${tag}`}>{`${displaySpecies(tag)} × ${count}`}</span>)}</div> : <span className="tag-empty">None detected yet</span>}
-                      </div>
-                      {(result.manual_tags ?? []).length > 0 && <div><span className="tag-group-label">Manual tags</span><div className="tag-list">{(result.manual_tags ?? []).map((tag) => <span className="tag-chip tag-chip-manual" key={`manual-${tag}`}>{displaySpecies(tag)}</span>)}</div></div>}
-                    </div>
-                    {result.status === "failed" && (
-                      <div className="media-failure-summary">
-                        <strong>{failureSummary(result.failure_code)}</strong>
-                        {result.failure_code && <code>{result.failure_code}</code>}
-                        {result.failure_message && <details><summary>View technical details</summary><p>{result.failure_message}</p></details>}
-                      </div>
-                    )}
-                    <div className="media-card-actions">
-                      {result.original_url && <a className="button button-secondary" href={result.original_url} target="_blank" rel="noreferrer">View original</a>}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="library-filters query-result-filters">
+            <div className="filter-bar" role="group" aria-label="Filter query results by media type">
+              {(["all", "image", "video"] as const).map((value) => (
+                <button key={value} type="button" className={filter === value ? "active" : "secondary"} aria-pressed={filter === value} onClick={() => setFilter(value)}>
+                  {value === "all" ? `All ${counts.all}` : value === "image" ? `Images ${counts.image}` : `Videos ${counts.video}`}
+                </button>
+              ))}
+            </div>
+            {selected.size > 0 && <button type="button" className="button-link icon-label" onClick={() => setSelected(new Set())}>{selected.size} selected <Icon name="clear" />Clear</button>}
+          </div>
+          {filteredResults.length === 0 ? <p className="empty-state">No matching media in this filter.</p> : (
+            <MediaTable
+              items={filteredResults}
+              label="Query results"
+              page={page}
+              onPageChange={setPage}
+              selected={selected}
+              onToggle={toggle}
+              onTogglePage={togglePage}
+            />
+          )}
         </div>
       )}
     </section>
