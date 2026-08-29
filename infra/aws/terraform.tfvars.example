@@ -22,3 +22,15 @@ azure_data_api_base_url = "https://replace-function-app.azurewebsites.net"
 # Set enable_google_provider or enable_microsoft_provider to true only after registration.
 # TF_VAR_google_client_id / TF_VAR_google_client_secret
 # TF_VAR_microsoft_client_id / TF_VAR_microsoft_client_secret
+
+# Google external login (current deployment choice):
+# 1. Create a Google OAuth 2.0 Web client with this exact redirect URI:
+#    https://<cognito_domain_prefix>.auth.<aws_region>.amazoncognito.com/oauth2/idpresponse
+# 2. Use http://localhost:5173 as the authorised JavaScript origin for local testing.
+# 3. Supply the client ID and client secret only through the deployment shell.
+enable_google_provider = false
+
+# Microsoft remains available as an optional provider but is not enabled for
+# the current deployment.
+enable_microsoft_provider = false
+microsoft_tenant          = "common"

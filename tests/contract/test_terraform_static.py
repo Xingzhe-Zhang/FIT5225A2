@@ -178,6 +178,25 @@ def test_external_identity_providers_are_real_opt_in_cognito_integrations() -> N
         assert "default = false" in block.group(1)
 
 
+def test_google_external_login_has_a_secret_free_deployment_handoff() -> None:
+    example = (ROOT / "infra" / "aws" / "terraform.tfvars.example").read_text(encoding="utf-8")
+    preflight = (ROOT / "scripts" / "google-auth-preflight.ps1").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert 'enable_google_provider = false' in example
+    assert 'enable_microsoft_provider = false' in example
+    assert "/oauth2/idpresponse" in example
+    for variable in (
+        "TF_VAR_enable_google_provider",
+        "TF_VAR_google_client_id",
+        "TF_VAR_google_client_secret",
+    ):
+        assert variable in preflight
+        assert variable in readme
+    assert "google-auth-preflight.ps1" in readme
+    assert "--provider Google --require-user" in readme
+
+
 def test_obsolete_lambda_stub_is_rejected() -> None:
     assert not (ROOT / "infra" / "aws" / "lambda_stub").exists()
 
