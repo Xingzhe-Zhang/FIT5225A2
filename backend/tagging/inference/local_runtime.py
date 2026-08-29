@@ -197,6 +197,7 @@ class TorchWildlifeRuntime:
                 )
             counts: Counter[str] = Counter()
             for entry in detections:
+                frame_counts: Counter[str] = Counter()
                 image_path = str(entry["file"])
                 payload = sources.get(image_path)
                 if payload is None:
@@ -212,7 +213,9 @@ class TorchWildlifeRuntime:
                         crop = _crop(image, width, height, detection.get("bbox"))
                         classification = self._classify(crop)
                         if classification is not None:
-                            counts[classification] += 1
+                            frame_counts[classification] += 1
+                for species, frame_count in frame_counts.items():
+                    counts[species] = max(counts[species], frame_count)
             return InferenceResult(tag_counts=dict(counts), model_version=self._model_version)
 
     def _classify(self, image: Image.Image) -> str | None:
