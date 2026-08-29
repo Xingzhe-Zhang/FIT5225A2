@@ -93,7 +93,7 @@ class QueryService:
         query = ThumbnailQuery.model_validate(payload)
         canonical_uri = self._thumbnail_normalizer.normalize(str(query.thumbnail_url))
         record = self._repository.find_by_storage_uri(owner_sub, canonical_uri)
-        if record is None or record.media_type != "image":
+        if record is None:
             raise MediaNotFoundError("thumbnail was not found for the authenticated owner")
         return record
 

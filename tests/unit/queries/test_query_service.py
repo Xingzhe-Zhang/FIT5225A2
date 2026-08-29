@@ -65,6 +65,30 @@ def test_thumbnail_signed_url_maps_to_only_owner_original() -> None:
         )
 
 
+def test_thumbnail_signed_url_can_locate_an_owned_video() -> None:
+    repository = InMemoryPagedMediaRepository(page_size=1)
+    video = record(5, counts={"cat": 2}).model_copy(
+        update={
+            "file_name": "cat-cattle.mp4",
+            "media_type": "video",
+            "original_storage_uri": "s3://media/originals/5/cat-cattle.mp4",
+            "thumbnail_storage_uri": "s3://media/derived/5/thumbnail.jpg",
+        }
+    )
+    repository.upsert(video)
+    service = QueryService(
+        repository,
+        TrustedThumbnailNormalizer({"media.example.test": "media"}),
+    )
+
+    result = service.query_thumbnail(
+        "owner-a",
+        {"thumbnail_url": "https://media.example.test/derived/5/thumbnail.jpg"},
+    )
+
+    assert result == video
+
+
 @pytest.mark.parametrize(
     "url",
     [

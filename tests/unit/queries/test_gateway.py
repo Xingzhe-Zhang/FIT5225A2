@@ -61,7 +61,9 @@ def test_gateway_forwards_token_signs_results_and_removes_duplicates() -> None:
     assert str(response.results[0].original_url) == (
         "https://signed.example.test/originals/1/camera%201.jpg"
     )
-    assert response.results[1].thumbnail_url is None
+    assert str(response.results[1].thumbnail_url) == (
+        "https://signed.example.test/derived/2/poster.jpg"
+    )
     assert str(response.results[1].original_url) == (
         "https://signed.example.test/originals/2/clip.mp4"
     )
@@ -82,6 +84,30 @@ def test_species_and_thumbnail_routes_use_same_signing_boundary() -> None:
     assert species.results[0].media_id == item.media_id
     assert thumbnail.results[0].media_id == item.media_id
     assert [call[0] for call in client.calls] == ["species", "thumbnail"]
+
+
+def test_video_thumbnail_route_returns_signed_thumbnail_and_original_urls() -> None:
+    video = record(2, counts={"cat": 2}).model_copy(
+        update={
+            "file_name": "cat-cattle.mp4",
+            "media_type": "video",
+            "original_storage_uri": "s3://media/originals/2/cat-cattle.mp4",
+            "thumbnail_storage_uri": "s3://media/derived/2/thumbnail.jpg",
+        }
+    )
+    gateway, _ = gateway_for([video])
+
+    response = gateway.query_thumbnail(
+        "token",
+        {"thumbnail_url": "https://media.example.test/derived/2/thumbnail.jpg"},
+    )
+
+    assert str(response.results[0].thumbnail_url) == (
+        "https://signed.example.test/derived/2/thumbnail.jpg"
+    )
+    assert str(response.results[0].original_url) == (
+        "https://signed.example.test/originals/2/cat-cattle.mp4"
+    )
 
 
 def test_gateway_rejects_foreign_canonical_storage_bucket() -> None:
