@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../auth/AuthContext";
+import { Icon } from "../ui/Icon";
 
 
 export interface SubscriptionView {
@@ -154,7 +155,7 @@ export function SubscriptionPanel({ client }: { client: SubscriptionClient }) {
               <div className="subscription-title"><strong>{subscription.email}</strong><span className={`subscription-status ${subscription.status}`}>{subscription.status === "active" ? "Active" : "Pending confirmation"}</span></div>
               <span>{subscription.tags.join(", ")}</span>
               {subscription.status === "pending_confirmation" && <small>Confirm the SNS email before notifications can arrive.</small>}
-              <div className="action-row"><button className="secondary" type="button" onClick={() => beginEdit(subscription)}>{`Edit ${subscription.email}`}</button><button className="button-link danger-link" type="button" onClick={() => setDeleting(subscription)}>{`Delete ${subscription.email}`}</button></div>
+              <div className="action-row"><button className="secondary icon-label" type="button" onClick={() => beginEdit(subscription)}><Icon name="edit" />{`Edit ${subscription.email}`}</button><button className="button-link danger-link icon-label" type="button" onClick={() => setDeleting(subscription)}><Icon name="delete" />{`Delete ${subscription.email}`}</button></div>
             </li>
           ))}
         </ul>
@@ -166,7 +167,7 @@ export function SubscriptionPanel({ client }: { client: SubscriptionClient }) {
         <input id="subscription-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="researcher@example.com" />
         <label htmlFor="subscription-tags">Watched tags</label>
         <input id="subscription-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="dingo, wombat" />
-        <div className="action-row"><button type="button" disabled={busy} onClick={() => void save()}>{editing ? "Update subscription" : "Create subscription"}</button>{editing && <button className="secondary" type="button" onClick={clearForm}>Cancel edit</button>}</div>
+        <div className="action-row"><button className="icon-label" type="button" disabled={busy} onClick={() => void save()}><Icon name="bell" />{editing ? "Update subscription" : "Create subscription"}</button>{editing && <button className="secondary icon-label" type="button" onClick={clearForm}><Icon name="clear" />Cancel edit</button>}</div>
       </div>
 
       {deleting && (

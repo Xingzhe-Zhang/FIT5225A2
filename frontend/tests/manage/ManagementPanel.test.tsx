@@ -66,6 +66,14 @@ async function query(api: ManagementClient) {
 
 
 describe("ManagementPanel", () => {
+  it("explains that query files detect tags and find existing matching media", () => {
+    renderPanel(client());
+
+    expect(screen.getByText(/temporary reference file to detect species tags/i)).toBeInTheDocument();
+    expect(screen.getByText(/query file is deleted after processing/i)).toBeInTheDocument();
+    expect(screen.queryByText("Add from your library")).not.toBeInTheDocument();
+  });
+
   it("queries with the shared auth token and renders selectable results", async () => {
     const api = client();
     await query(api);

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useAuth } from "../auth/AuthContext";
 import type { BulkDeleteResponse, TagUpdateResponse } from "../api/mediaTypes";
+import { Icon } from "../ui/Icon";
 
 
 export interface ManagementResult {
@@ -20,8 +21,16 @@ export interface ManagementClient {
 }
 
 function resultName(result: ManagementResult): string {
-  const path = new URL(result.original_url).pathname;
-  return decodeURIComponent(path.split("/").at(-1) || result.media_id);
+  try {
+    const path = new URL(result.original_url).pathname;
+    return decodeURIComponent(path.split("/").at(-1) || result.media_id);
+  } catch {
+    return result.media_id;
+  }
+}
+
+function displayTag(value: string): string {
+  return value.replaceAll("_", " ");
 }
 
 function outcomeFor<T extends { media_id: string | null; url?: string }>(
@@ -39,7 +48,13 @@ function statusSummary(statuses: string[]): string {
 }
 
 
-export function ManagementPanel({ client }: { client: ManagementClient }) {
+export function ManagementPanel({
+  client,
+  onLibraryChanged,
+}: {
+  client: ManagementClient;
+  onLibraryChanged?(): Promise<void>;
+}) {
   const { accessToken } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [results, setResults] = useState<ManagementResult[]>([]);
@@ -120,6 +135,7 @@ export function ManagementPanel({ client }: { client: ManagementClient }) {
         const statuses = failed.map((outcome) => outcome?.status ?? "missing result");
         setError(`Tags were not updated for ${failed.length} item(s): ${statusSummary(statuses)}.`);
       }
+      if (succeeded > 0) await onLibraryChanged?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The tag update failed");
     } finally {
@@ -152,6 +168,7 @@ export function ManagementPanel({ client }: { client: ManagementClient }) {
         const details = failed.map((outcome) => outcome?.error || outcome?.status || "missing result");
         setError(`Could not delete ${failed.length} item(s): ${details.join("; ")}`);
       }
+      if (deletedIds.size > 0) await onLibraryChanged?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The deletion failed");
     } finally {
@@ -165,11 +182,11 @@ export function ManagementPanel({ client }: { client: ManagementClient }) {
         <div><p className="panel-kicker">Curate records</p><h2 id="management-heading">Media management</h2></div>
         <span className="panel-number" aria-hidden="true">04</span>
       </div>
-      <p className="panel-description">Upload a reference file to find similar records, then apply tags or delete selected items in one action.</p>
+      <p className="panel-description">Use a temporary reference file to detect species tags, then find existing media in the archive that match those tags. The query file is deleted after processing.</p>
       <div className="management-search">
         <label htmlFor="query-file">Query file</label>
         <input id="query-file" type="file" accept="image/jpeg,image/png,video/mp4,video/quicktime,.mov" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-        <button type="button" disabled={!file || busy || !accessToken} onClick={() => void runQuery()}>Find matching media</button>
+        <button className="icon-label" type="button" disabled={!file || busy || !accessToken} onClick={() => void runQuery()}><Icon name="search" />Find matching media</button>
       </div>
 
       {error && <p role="alert">{error}</p>}
@@ -190,13 +207,13 @@ export function ManagementPanel({ client }: { client: ManagementClient }) {
               const name = resultName(result);
               return (
                 <li className={selected.has(result.media_id) ? "selected" : ""} key={result.media_id}>
-                  {result.thumbnail_url ? <img src={result.thumbnail_url} alt="" /> : <span className="management-placeholder" aria-hidden="true">◇</span>}
+                  <img src={result.thumbnail_url ?? result.original_url} alt="" />
                   <div className="management-record">
                     <label><input type="checkbox" checked={selected.has(result.media_id)} onChange={() => toggle(result.media_id)} />{`Select ${name}`}</label>
                     <a href={result.original_url} target="_blank" rel="noreferrer">{`Open ${name}`}</a>
                     <div className="tag-list">
-                      {Object.entries(result.tag_counts).map(([tag, count]) => <span className="tag-chip" key={`detected-${tag}`}>{`${tag}: ${count}`}</span>)}
-                      {(result.manual_tags ?? []).map((tag) => <span className="tag-chip tag-chip-manual" key={`manual-${tag}`}>{`${tag} · manual`}</span>)}
+                      {Object.entries(result.tag_counts).map(([tag, count]) => <span className="tag-chip" key={`detected-${tag}`}>{`${displayTag(tag)}: ${count}`}</span>)}
+                      {(result.manual_tags ?? []).map((tag) => <span className="tag-chip tag-chip-manual" key={`manual-${tag}`}>{`${displayTag(tag)} · manual`}</span>)}
                     </div>
                   </div>
                 </li>
@@ -210,9 +227,9 @@ export function ManagementPanel({ client }: { client: ManagementClient }) {
         <label htmlFor="management-tags">Tags</label>
         <input id="management-tags" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="dingo, night" />
         <div className="action-row">
-          <button type="button" disabled={busy || selectedUrls.length === 0} onClick={() => void update(1)}>Add tags</button>
-          <button className="secondary" type="button" disabled={busy || selectedUrls.length === 0} onClick={() => void update(0)}>Remove tags</button>
-          <button className="button-danger" type="button" disabled={busy || selectedUrls.length === 0} onClick={() => setConfirmingDelete(true)}>Delete selected</button>
+          <button className="icon-label" type="button" disabled={busy || selectedUrls.length === 0} onClick={() => void update(1)}><Icon name="add" />Add tags</button>
+          <button className="secondary icon-label" type="button" disabled={busy || selectedUrls.length === 0} onClick={() => void update(0)}><Icon name="remove" />Remove tags</button>
+          <button className="button-danger icon-label" type="button" disabled={busy || selectedUrls.length === 0} onClick={() => setConfirmingDelete(true)}><Icon name="delete" />Delete selected</button>
         </div>
       </div>
 
