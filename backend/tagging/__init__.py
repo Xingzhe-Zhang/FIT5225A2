@@ -1,0 +1,1 @@
+"""Automatic wildlife tagging packages."""
