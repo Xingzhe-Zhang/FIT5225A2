@@ -62,7 +62,7 @@ class QueryGateway:
             else None
         )
         thumbnail_url = None
-        if available and record.media_type == "image" and record.thumbnail_storage_uri is not None:
+        if available and record.thumbnail_storage_uri is not None:
             thumbnail_url = self._signer.create_download_url(
                 self._key(str(record.thumbnail_storage_uri)),
                 expires_in_seconds=self._expires_in_seconds,
