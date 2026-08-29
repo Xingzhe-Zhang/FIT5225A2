@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/upload-reservation-cancel-request.schema.json",
+  "title": "UploadReservationCancelRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sha256"],
+  "properties": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

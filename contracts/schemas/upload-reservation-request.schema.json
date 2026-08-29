@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/upload-reservation-request.schema.json",
+  "title": "UploadReservationRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["file_name", "media_type", "size_bytes", "sha256"],
+  "properties": {
+    "file_name": {"type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$"},
+    "media_type": {"type": "string", "enum": ["image", "video"]},
+    "size_bytes": {"type": "integer", "minimum": 1, "maximum": 536870912},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"media_type": {"const": "image"}}},
+      "then": {"properties": {"size_bytes": {"maximum": 26214400}}}
+    }
+  ]
+}

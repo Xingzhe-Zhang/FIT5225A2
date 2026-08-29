@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/upload-reservation-cancel-response.schema.json",
+  "title": "UploadReservationCancelResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["media_id", "status"],
+  "properties": {
+    "media_id": {"type": "string", "format": "uuid"},
+    "status": {"type": "string", "enum": ["cancelled", "already_cancelled"]}
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pacific-bioarchive.local/schemas/upload-reservation-response.schema.json",
+  "title": "UploadReservationResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["media_id", "duplicate", "status", "upload_url", "object_key", "expires_in_seconds", "upload_headers"],
+  "properties": {
+    "media_id": {"type": "string", "format": "uuid"},
+    "duplicate": {"type": "boolean"},
+    "status": {"type": "string", "enum": ["reserved", "uploaded", "processing", "prepared", "ready", "failed"]},
+    "upload_url": {"type": ["string", "null"], "format": "uri"},
+    "object_key": {"type": ["string", "null"], "minLength": 1},
+    "expires_in_seconds": {"type": ["integer", "null"], "minimum": 1, "maximum": 3600},
+    "upload_headers": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["Content-Type", "x-amz-meta-sha256"],
+      "properties": {
+        "Content-Type": {"type": "string", "minLength": 1},
+        "x-amz-meta-sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"duplicate": {"const": true}}, "required": ["duplicate"]},
+      "then": {"properties": {"upload_url": {"type": "null"}, "object_key": {"type": "null"}, "expires_in_seconds": {"type": "null"}, "upload_headers": {"type": "null"}}},
+      "else": {"properties": {"upload_url": {"type": "string"}, "object_key": {"type": "string"}, "expires_in_seconds": {"type": "integer"}, "upload_headers": {"type": "object"}}}
+    }
+  ]
+}
