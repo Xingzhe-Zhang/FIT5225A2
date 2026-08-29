@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "../auth/AuthContext";
 import { PlatformClient } from "../api/platformClient";
-import { MediaGallery } from "../library/MediaGallery";
+import { MediaGallery, type LocalMediaPreview } from "../library/MediaGallery";
 import { ManagementPanel } from "../manage/ManagementPanel";
 import { QueryPanel } from "../query/QueryPanel";
 import { SubscriptionPanel } from "../subscriptions/SubscriptionPanel";
 import { UploadPanel } from "../upload/UploadPanel";
+import { Icon } from "../ui/Icon";
 
 const platformClient = new PlatformClient();
 const uploadClient = {
@@ -15,15 +16,37 @@ const uploadClient = {
 };
 const mediaClient = {
   list: platformClient.listMedia.bind(platformClient),
+  updateTags: platformClient.updateTags.bind(platformClient),
+  deleteMedia: (urls: string[], accessToken: string) => platformClient.deleteMedia(urls, accessToken),
   deleteMediaById: platformClient.deleteMediaById.bind(platformClient),
 };
 
 export function LibraryPage() {
   const auth = useAuth();
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const [localPreviews, setLocalPreviews] = useState<Record<string, LocalMediaPreview>>({});
+  const previewUrls = useRef<Set<string>>(new Set());
+
+  useEffect(() => () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
 
   async function refreshLibrary() {
     setLibraryVersion((current) => current + 1);
+  }
+
+  function rememberLocalPreview(mediaId: string, file: File) {
+    const url = URL.createObjectURL(file);
+    previewUrls.current.add(url);
+    setLocalPreviews((current) => {
+      const previous = current[mediaId]?.url;
+      if (previous) {
+        URL.revokeObjectURL(previous);
+        previewUrls.current.delete(previous);
+      }
+      return { ...current, [mediaId]: { file_name: file.name, url } };
+    });
   }
 
   return (
@@ -38,7 +61,7 @@ export function LibraryPage() {
         </a>
         <div className="header-actions">
           <span className="connection-status"><i aria-hidden="true" /> Secure session</span>
-          <button type="button" className="button button-quiet" onClick={auth.logout}>Sign out</button>
+          <button type="button" className="button button-quiet icon-label" onClick={auth.logout}><Icon name="logout" />Sign out</button>
         </div>
       </header>
       <main id="top" className="library-shell">
@@ -56,16 +79,16 @@ export function LibraryPage() {
         </section>
 
         <nav className="section-nav" aria-label="Application sections">
-          <a href="#upload"><span>01</span> Upload</a>
-          <a href="#library"><span>02</span> Library</a>
-          <a href="#search"><span>03</span> Search</a>
-          <a href="#manage"><span>04</span> Manage</a>
-          <a href="#subscriptions"><span>05</span> Subscriptions</a>
+          <a href="#upload"><Icon name="upload" /><span>01</span> Upload</a>
+          <a href="#library"><Icon name="library" /><span>02</span> Library</a>
+          <a href="#search"><Icon name="search" /><span>03</span> Search</a>
+          <a href="#manage"><Icon name="manage" /><span>04</span> Manage</a>
+          <a href="#subscriptions"><Icon name="bell" /><span>05</span> Subscriptions</a>
         </nav>
 
         <div className="workspace-grid">
           <section id="upload" className="workspace-card workspace-card-compact">
-            <UploadPanel client={uploadClient} refreshLibrary={refreshLibrary} />
+            <UploadPanel client={uploadClient} refreshLibrary={refreshLibrary} onUploadAccepted={rememberLocalPreview} />
           </section>
           <aside className="workspace-card field-notes" aria-labelledby="field-notes-heading">
             <div>
@@ -80,13 +103,13 @@ export function LibraryPage() {
             </ol>
           </aside>
           <section id="library" className="workspace-card workspace-card-wide">
-            <MediaGallery client={mediaClient} refreshVersion={libraryVersion} />
+            <MediaGallery client={mediaClient} refreshVersion={libraryVersion} localPreviews={localPreviews} />
           </section>
           <section id="search" className="workspace-card workspace-card-wide">
             <QueryPanel client={platformClient} />
           </section>
           <section id="manage" className="workspace-card">
-            <ManagementPanel client={platformClient} />
+            <ManagementPanel client={platformClient} onLibraryChanged={refreshLibrary} />
           </section>
           <section id="subscriptions" className="workspace-card">
             <SubscriptionPanel client={platformClient} />

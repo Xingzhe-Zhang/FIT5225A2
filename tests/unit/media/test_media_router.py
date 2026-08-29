@@ -88,6 +88,7 @@ def test_media_route_requires_auth_and_returns_only_signed_owner_media() -> None
         "results": [
             {
                 "media_id": str(owned_image.media_id),
+                "file_name": "camera.jpg",
                 "media_type": "image",
                 "status": "ready",
                 "original_url": f"https://downloads.example.test/originals/{owned_image.media_id}/{'a' * 64}/camera.jpg",
@@ -99,6 +100,7 @@ def test_media_route_requires_auth_and_returns_only_signed_owner_media() -> None
             },
             {
                 "media_id": str(owned_video.media_id),
+                "file_name": "clip.mp4",
                 "media_type": "video",
                 "status": "ready",
                 "original_url": f"https://downloads.example.test/originals/{owned_video.media_id}/{'a' * 64}/clip.mp4",
@@ -110,6 +112,7 @@ def test_media_route_requires_auth_and_returns_only_signed_owner_media() -> None
             },
             {
                 "media_id": str(processing.media_id),
+                "file_name": "camera.jpg",
                 "media_type": "image",
                 "status": "processing",
                 "original_url": None,

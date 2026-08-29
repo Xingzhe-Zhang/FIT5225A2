@@ -30,6 +30,14 @@ def oriented_jpeg() -> bytes:
     return output.getvalue()
 
 
+def mpo_jpeg() -> bytes:
+    first = Image.new("RGB", (120, 60), "navy")
+    second = Image.new("RGB", (120, 60), "green")
+    output = io.BytesIO()
+    first.save(output, format="MPO", save_all=True, append_images=[second])
+    return output.getvalue()
+
+
 def test_thumbnail_preserves_ratio_fits_bounds_and_is_smaller() -> None:
     module = thumbnail_module()
     original = noisy_png(800, 400)
@@ -56,6 +64,19 @@ def test_thumbnail_applies_exif_orientation_before_resizing() -> None:
     result = processor.create(oriented_jpeg())
 
     assert (result.width, result.height) == (50, 100)
+
+
+def test_thumbnail_accepts_mpo_as_jpeg_and_uses_first_frame() -> None:
+    module = thumbnail_module()
+    processor = module.PillowThumbnailer(
+        module.ThumbnailConfig(max_width=60, max_height=60, jpeg_quality=80)
+    )
+
+    result = processor.create(mpo_jpeg())
+
+    assert (result.width, result.height) == (60, 30)
+    with Image.open(io.BytesIO(result.data)) as thumbnail:
+        assert thumbnail.format == "JPEG"
 
 
 @pytest.mark.parametrize(

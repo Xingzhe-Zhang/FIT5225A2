@@ -52,7 +52,10 @@ class PillowThumbnailer:
 
         try:
             with Image.open(io.BytesIO(source_bytes)) as probe:
-                if probe.format not in {"JPEG", "PNG"}:
+                # Pillow identifies some JPEG camera files as MPO because they
+                # contain multiple JPEG frames. The first frame remains a
+                # standards-compatible JPEG image and is safe to thumbnail.
+                if probe.format not in {"JPEG", "MPO", "PNG"}:
                     raise ImageProcessingError(
                         "IMAGE_FORMAT_UNSUPPORTED",
                         "Only JPEG and PNG images are supported",

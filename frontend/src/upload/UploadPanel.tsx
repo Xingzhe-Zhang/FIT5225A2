@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { checksumFileInWorker } from "./checksum";
 import { maxBytesFor } from "./mediaLimits";
+import { Icon } from "../ui/Icon";
 
 export interface UploadReservationRequest {
   file_name: string;
@@ -42,10 +43,12 @@ function formatBytes(bytes: number): string {
 export function UploadPanel({
   client,
   refreshLibrary,
+  onUploadAccepted,
   calculateChecksum = checksumFileInWorker,
 }: {
   client: UploadClient;
   refreshLibrary(): Promise<void>;
+  onUploadAccepted?(mediaId: string, file: File): void;
   calculateChecksum?(file: File, signal?: AbortSignal): Promise<string>;
 }) {
   const auth = useAuth();
@@ -121,6 +124,7 @@ export function UploadPanel({
         throw new Error("Direct upload failed.");
       }
       pendingReservation = null;
+      onUploadAccepted?.(reservation.media_id, file);
       await refreshLibrary();
       setMessage("Upload complete.");
       clearSelection();
@@ -186,19 +190,19 @@ export function UploadPanel({
         </label>
         {file && (
           <div className="file-summary" aria-label="Selected file">
-            <span className="file-type-icon" aria-hidden="true">{mediaTypeFor(file) === "video" ? "▶" : "◇"}</span>
+            <span className="file-type-icon" aria-hidden="true"><Icon name={mediaTypeFor(file) === "video" ? "video" : "image"} /></span>
             <span>
               <strong>{file.name}</strong>
               <small>{`${formatBytes(file.size)} · ${mediaTypeFor(file) === "video" ? "Video" : "Image"}`}</small>
             </span>
             <button
               type="button"
-              className="button-link"
+              className="button-link icon-label"
               onClick={() => uploading ? abortRef.current?.abort() : clearSelection()}
-            >{uploading ? "Cancel upload" : "Remove"}</button>
+            ><Icon name="clear" />{uploading ? "Cancel upload" : "Remove"}</button>
           </div>
         )}
-        <button type="submit" aria-label="Upload" disabled={uploading || !file}>{uploading ? "Preparing upload…" : "Upload to archive"}</button>
+        <button className="icon-label" type="submit" aria-label="Upload" disabled={uploading || !file}><Icon name="upload" />{uploading ? "Preparing upload…" : "Upload to archive"}</button>
       </form>
       {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}

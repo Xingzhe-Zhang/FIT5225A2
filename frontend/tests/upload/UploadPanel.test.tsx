@@ -44,11 +44,12 @@ test("hashes a selected image, reserves it, PUTs it, and refreshes the library",
   const refreshLibrary = vi.fn().mockResolvedValue(undefined);
   const client: UploadClient = { reserve, cancelReservation: vi.fn() };
   const calculateChecksum = vi.fn().mockResolvedValue("ab".repeat(32));
+  const onUploadAccepted = vi.fn();
   vi.stubGlobal("fetch", directPut);
 
   render(
     <AuthContext.Provider value={authenticated}>
-      <UploadPanel client={client} refreshLibrary={refreshLibrary} calculateChecksum={calculateChecksum} />
+      <UploadPanel client={client} refreshLibrary={refreshLibrary} onUploadAccepted={onUploadAccepted} calculateChecksum={calculateChecksum} />
     </AuthContext.Provider>,
   );
   const file = mediaFile("Camera.JPG", "video/mp4");
@@ -76,6 +77,7 @@ test("hashes a selected image, reserves it, PUTs it, and refreshes the library",
     body: file,
   }));
   expect(refreshLibrary).toHaveBeenCalledOnce();
+  expect(onUploadAccepted).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", file);
   expect(screen.getByText("Upload complete.")).toBeInTheDocument();
   expect(screen.queryByText("Camera.JPG")).not.toBeInTheDocument();
 });
